@@ -56,14 +56,16 @@ impl SetupCmd {
         client.sync_state().await.unwrap();
 
         // Create faucet accounts
-        let (faucet1, _) = Self::create_faucet(1000, "ASSETA", client);
-        let (faucet2, _) = Self::create_faucet(1000, "ASSETB", client);
+        let (faucet1, _) = Self::create_faucet(2000, "ASSETA", client);
+        let (faucet2, _) = Self::create_faucet(2000, "ASSETB", client);
 
         // Create user account
         let (user, _) = Self::create_wallet(client);
+        let (user_2, _) = Self::create_wallet(client);
 
         // Mint assets for user
         Self::fund_user_wallet(faucet1.id(), 1000, faucet2.id(), 1000, user.id(), client).await;
+        Self::fund_user_wallet(faucet1.id(), 1000, faucet2.id(), 1000, user_2.id(), client).await;
 
         // Create 50 ASSETA/ASSETB swap notes
         Self::create_swap_notes(50, faucet1.id(), 500, faucet2.id(), 500, user.id(), client).await;
@@ -102,6 +104,7 @@ impl SetupCmd {
         .unwrap();
 
         println!("CLOB successfully setup.");
+        println!("user 2: {:?}", user_2.id().to_hex());
 
         Ok(())
     }

@@ -1454,6 +1454,7 @@ dependencies = [
  "log",
  "miden-client",
  "miden-lib",
+ "miden-objects",
  "rand",
  "rusqlite",
  "serde",

@@ -56,32 +56,44 @@ impl From<InputNoteRecord> for Order {
 /////////////////////////////////////////////////
 
 pub fn match_orders(incoming_order: Order, existing_order: Order) -> Result<Order, OrderError> {
-    // Orders match if:
-    // - They have inversed source and target assets
-    // - Contains enough assets to fullfill the incoming order
-    // - Requests a number of assets capable of being fullfilled by the incoming order
-
-    // assets do not match
-    if !(existing_order.source_asset.faucet_id() == incoming_order.target_asset.faucet_id()
-        && existing_order.target_asset.faucet_id() == incoming_order.source_asset.faucet_id())
+    // Check that the assets are inversed
+    if existing_order.source_asset.faucet_id() != incoming_order.target_asset.faucet_id()
+        || existing_order.target_asset.faucet_id() != incoming_order.source_asset.faucet_id()
     {
         return Err(OrderError::AssetsNotMatching);
     }
 
-    // existing order does not contain enough assets to fullfill the incoming order
-    if existing_order.source_asset.unwrap_fungible().amount()
-        < incoming_order.target_asset.unwrap_fungible().amount()
-    {
-        return Err(OrderError::TooFewSourceAssets);
+    // Extract the amounts from the orders
+    let existing_source_amount = existing_order.source_asset.unwrap_fungible().amount() as f64;
+    let existing_target_amount = existing_order.target_asset.unwrap_fungible().amount() as f64;
+    let incoming_source_amount = incoming_order.source_asset.unwrap_fungible().amount() as f64;
+    let incoming_target_amount = incoming_order.target_asset.unwrap_fungible().amount() as f64;
+
+    // Calculate the price of the existing order (price per unit of source asset)
+    let existing_price = existing_target_amount / existing_source_amount;
+
+    // Calculate the price of the incoming order
+    let incoming_price = incoming_target_amount / incoming_source_amount;
+
+    // Log the prices for debugging
+    println!(
+        "Existing order price: {}, Incoming order price: {}",
+        existing_price, incoming_price
+    );
+
+    // Check if the existing order's price is equal to or lower than the incoming order's price
+    if existing_price > incoming_price {
+        panic!("price too high");
     }
 
-    // existing order request an amount too large to fullfill the incoming order
-    if existing_order.target_asset.unwrap_fungible().amount()
-        > incoming_order.source_asset.unwrap_fungible().amount()
-    {
-        return Err(OrderError::TooManyTargetAssets);
-    }
+    // Determine the amounts that can be traded (allow partial fills)
+    let trade_source_amount = existing_source_amount.min(incoming_target_amount);
+    let trade_target_amount = existing_target_amount.min(incoming_source_amount);
 
+    // Ensure trade amounts are positive
+    if trade_source_amount <= 0.0 || trade_target_amount <= 0.0 {
+        panic!("must be positive");
+    }
     Ok(existing_order)
 }
 
