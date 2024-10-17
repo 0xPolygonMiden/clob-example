@@ -156,6 +156,10 @@ impl OrderCmd {
         let expected_swap_note = OutputNote::Full(output_swap_note);
         let expected_p2id_note = OutputNote::Full(expected_p2id_note);
 
+        // account.vault().get_balance(source_faucet_id).unwrap()
+
+        // ######### Setting up TX ######### //
+
         // note args to SWAPp: 5 in this case means to give 5 tokens to SWAPp creator
         const NOTE_ARGS: [Felt; 4] = [Felt::new(5), Felt::new(0), Felt::new(0), Felt::new(0)];
         let note_args_commitment: [Felt; 4] = NOTE_ARGS;

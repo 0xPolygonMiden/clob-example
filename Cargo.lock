@@ -1455,7 +1455,13 @@ dependencies = [
  "miden-client",
  "miden-lib",
  "miden-objects",
+ "miden-processor",
+ "miden-prover",
+ "miden-stdlib",
+ "miden-tx",
+ "miden-vm",
  "rand",
+ "rand_chacha",
  "rusqlite",
  "serde",
  "tokio",
@@ -1536,6 +1542,7 @@ dependencies = [
  "miden-prover",
  "miden-verifier",
  "rand",
+ "rand_chacha",
  "winter-maybe-async 0.10.1",
 ]
 
@@ -1549,6 +1556,22 @@ dependencies = [
  "miden-core",
  "tracing",
  "winter-verifier",
+]
+
+[[package]]
+name = "miden-vm"
+version = "0.10.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8c2300d5ac24c5fa04fb6052b8c7a9240bf1476df5fec4aba276c5dade9b9a29"
+dependencies = [
+ "blake3",
+ "miden-assembly",
+ "miden-core",
+ "miden-processor",
+ "miden-prover",
+ "miden-stdlib",
+ "miden-verifier",
+ "tracing",
 ]
 
 [[package]]

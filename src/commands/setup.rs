@@ -65,7 +65,7 @@ impl SetupCmd {
 
         // Mint assets for user
         Self::fund_user_wallet(faucet1.id(), 1000, faucet2.id(), 1000, user.id(), client).await;
-        Self::fund_user_wallet(faucet1.id(), 1000, faucet2.id(), 1000, user_2.id(), client).await;
+        Self::fund_user_wallet(faucet1.id(), 5, faucet2.id(), 5, user_2.id(), client).await;
 
         // Create 50 ASSETA/ASSETB swap notes
         Self::create_swap_notes(50, faucet1.id(), 500, faucet2.id(), 500, user.id(), client).await;
