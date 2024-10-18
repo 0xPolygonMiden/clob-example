@@ -18,7 +18,6 @@ use miden_client::{
     },
     Client, Felt,
 };
-use miden_lib::notes::create_swap_note;
 use rand::{seq::SliceRandom, Rng};
 use rusqlite::{Connection, Result};
 use std::rc::Rc;
@@ -39,15 +38,6 @@ use miden_objects::{
 // Partially Fillable SWAP note
 // ================================================================================================
 
-/// Generates a SWAP note - swap of assets between two accounts - and returns the note as well as
-/// [NoteDetails] for the payback note.
-///
-/// This script enables a swap of 2 assets between the `sender` account and any other account that
-/// is willing to consume the note. The consumer will receive the `offered_asset` and will create a
-/// new P2ID note with `sender` as target, containing the `requested_asset`.
-///
-/// # Errors
-/// Returns an error if deserialization or compilation of the `SWAP` script fails.
 pub fn create_partial_swap_note(
     creator: AccountId,
     last_consumer: AccountId,
@@ -58,7 +48,7 @@ pub fn create_partial_swap_note(
 ) -> Result<Note, NoteError> {
     let assembler: Assembler = TransactionKernel::assembler_testing();
 
-    let note_code = include_str!("../notes/SWAPp.masm");
+    let note_code = include_str!("../scripts/SWAPp.masm");
     let note_script = NoteScript::compile(note_code, assembler).unwrap();
     let note_type = NoteType::Public;
 
@@ -112,7 +102,7 @@ pub fn create_p2id_note(
     serial_num: [Felt; 4],
 ) -> Result<Note, NoteError> {
     let assembler: Assembler = TransactionKernel::assembler_testing().with_debug_mode(true);
-    let note_code = include_str!("../notes/P2ID.masm");
+    let note_code = include_str!("../scripts/P2ID.masm");
 
     let note_script = NoteScript::compile(note_code, assembler).unwrap();
 
@@ -173,22 +163,21 @@ pub fn create_swap_notes_transaction_request(
     num_notes: u8,
     sender: AccountId,
     offering_faucet: AccountId,
-    total_asset_offering: u64,
+    _total_asset_offering: u64,
     requesting_faucet: AccountId,
-    total_asset_requesting: u64,
+    _total_asset_requesting: u64,
     felt_rng: &mut impl FeltRng,
 ) -> Result<TransactionRequest, TransactionRequestError> {
-    // Setup note variables
-    // let mut expected_future_notes = vec![];
+    // Setup note args
     let mut own_output_notes = vec![];
-    // let note_type = NoteType::Public;
-    // let aux = Felt::new(0);
 
+    // TODO: Use random distribution, 10 for testing
     // Generate random distributions for offering and requesting assets
-    let offering_distribution =
-        generate_random_distribution(num_notes as usize, total_asset_offering);
-    let requesting_distribution =
-        generate_random_distribution(num_notes as usize, total_asset_requesting);
+    let offering_distribution = [10u64; 50];
+    // generate_random_distribution(num_notes as usize, total_asset_offering);
+
+    let requesting_distribution = [10u64; 50];
+    // generate_random_distribution(num_notes as usize, total_asset_requesting);
 
     for i in 0..num_notes {
         let offered_asset = Asset::Fungible(
@@ -214,42 +203,37 @@ pub fn create_swap_notes_transaction_request(
     TransactionRequest::new().with_own_output_notes(own_output_notes)
 }
 
-pub fn generate_random_distribution(n: usize, total: u64) -> Vec<u64> {
-    let min_value = 10;
-    let max_value = 20;
-
-    let total_min = n as u64 * min_value;
-    let total_max = n as u64 * max_value;
-
-    if total < total_min || total > total_max {
-        panic!(
-            "Total must be between {} and {} for {} numbers between {} and {}",
-            total_min, total_max, n, min_value, max_value
-        );
+pub fn _generate_random_distribution(n: usize, total: u64) -> Vec<u64> {
+    if total < n as u64 {
+        panic!("Total must at least be equal to n to make sure that all values are non-zero.")
     }
-
-    let mut result = vec![min_value; n];
-    let mut total_remaining = total - total_min;
 
     let mut rng = rand::thread_rng();
+    let mut result = Vec::with_capacity(n);
+    let mut remaining = total;
 
-    while total_remaining > 0 {
-        for i in 0..n {
-            if total_remaining == 0 {
-                break;
-            }
-
-            let max_increment = max_value - result[i];
-            if max_increment == 0 {
-                continue;
-            }
-
-            let increment = rng.gen_range(1..=std::cmp::min(max_increment, total_remaining));
-            result[i] += increment;
-            total_remaining -= increment;
+    // Generate n-1 random numbers
+    for _ in 0..n - 1 {
+        if remaining == 0 {
+            result.push(1); // Ensure non-zero
+            continue;
         }
+
+        let max = remaining.saturating_sub(n as u64 - result.len() as u64 - 1);
+        let value = if max > 1 {
+            rng.gen_range(1..=(total / n as u64))
+        } else {
+            1
+        };
+
+        result.push(value);
+        remaining -= value;
     }
 
+    // Add the last number to make the sum equal to total
+    result.push(remaining.max(1));
+
+    // Shuffle the vector to randomize the order
     result.shuffle(&mut rng);
 
     result

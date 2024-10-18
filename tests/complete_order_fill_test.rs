@@ -1,4 +1,3 @@
-use crate::common::*;
 use miden_client::transactions::OutputNote;
 use miden_lib::transaction::TransactionKernel;
 use miden_objects::{
@@ -10,6 +9,9 @@ use miden_objects::{
     Felt,
 };
 use miden_tx::testing::mock_chain::{Auth, MockChain};
+
+mod common;
+use common::{compute_p2id_serial_num, create_p2id_note, create_partial_swap_note};
 
 #[test]
 fn prove_complete_order_fill() {

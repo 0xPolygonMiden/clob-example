@@ -53,7 +53,7 @@ pub fn create_p2id_note(
     serial_num: [Felt; 4],
 ) -> Result<Note, NoteError> {
     let assembler: Assembler = TransactionKernel::assembler_testing().with_debug_mode(true);
-    let note_code = include_str!("../notes/P2ID.masm");
+    let note_code = include_str!("../../scripts/P2ID.masm");
 
     let note_script = NoteScript::compile(note_code, assembler).unwrap();
 
@@ -85,7 +85,7 @@ pub fn create_partial_swap_note(
 ) -> Result<Note, NoteError> {
     let assembler: Assembler = TransactionKernel::assembler_testing();
 
-    let note_code = include_str!("../notes/SWAPp.masm");
+    let note_code = include_str!("../../scripts/SWAPp.masm");
     let note_script = NoteScript::compile(note_code, assembler).unwrap();
     let note_type = NoteType::Public;
 

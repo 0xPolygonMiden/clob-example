@@ -2,8 +2,8 @@ use clap::Parser;
 
 use crate::{
     commands::{
-        demo::DemoCmd, init::InitCmd, list::ListCmd, login::LoginCmd, order::OrderCmd,
-        query::QueryCmd, setup::SetupCmd, sync::SyncCmd,
+        demo::DemoCmd, init::InitCmd, list::ListCmd, order::OrderCmd, query::QueryCmd,
+        setup::SetupCmd, sync::SyncCmd,
     },
     utils::setup_client,
 };
@@ -14,7 +14,6 @@ pub enum Command {
     Init(InitCmd),
     Setup(SetupCmd),
     Order(OrderCmd),
-    Login(LoginCmd),
     List(ListCmd),
     Sync(SyncCmd),
     Query(QueryCmd),
@@ -47,7 +46,6 @@ impl Cli {
             Command::Init(init) => init.execute(),
             Command::Query(query) => query.execute(&mut client).await,
             Command::List(list) => list.execute(&mut client),
-            Command::Login(login) => login.execute(&mut client),
             Command::Demo(demo) => demo.execute(&mut client).await,
         }
     }

@@ -125,7 +125,7 @@ mod tests {
 
     use super::Order;
 
-    fn mock_orders() -> (Order, Vec<Order>) {
+    fn build_orders() -> (Order, Vec<Order>) {
         // create faucets
         let source_faucet_id_hex = "0x227bd163275aa1bf";
         let source_faucet_id = AccountId::from_hex(source_faucet_id_hex).unwrap();
@@ -180,7 +180,7 @@ mod tests {
 
     #[test]
     fn order_matching_succeeds() {
-        let (incoming_order, existing_orders) = mock_orders();
+        let (incoming_order, existing_orders) = build_orders();
         let expected_results = [
             Ok(existing_orders[0]),
             Err(OrderError::AssetsNotMatching),

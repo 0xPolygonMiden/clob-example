@@ -1,14 +1,15 @@
-use crate::common::*;
+use common::create_partial_swap_note;
 use miden_lib::transaction::TransactionKernel;
 use miden_objects::{
     accounts::{account_id::testing::ACCOUNT_ID_FUNGIBLE_FAUCET_ON_CHAIN, AccountId},
     assets::{Asset, FungibleAsset},
-    notes::NoteType,
     testing::account_code::DEFAULT_AUTH_SCRIPT,
     transaction::TransactionScript,
     Felt,
 };
 use miden_tx::testing::mock_chain::{Auth, MockChain};
+
+mod common;
 
 #[test]
 fn prove_partial_public_swap_script() {

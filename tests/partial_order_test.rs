@@ -1,15 +1,17 @@
-use crate::common::*;
 use miden_client::transactions::OutputNote;
 use miden_lib::transaction::TransactionKernel;
 use miden_objects::{
     accounts::{account_id::testing::ACCOUNT_ID_FUNGIBLE_FAUCET_ON_CHAIN, AccountId},
     assets::{Asset, FungibleAsset},
     notes::NoteType,
-    testing::account_code::{self, DEFAULT_AUTH_SCRIPT},
+    testing::account_code::DEFAULT_AUTH_SCRIPT,
     transaction::TransactionScript,
     Felt,
 };
 use miden_tx::testing::mock_chain::{Auth, MockChain};
+
+mod common;
+use common::{compute_p2id_serial_num, create_p2id_note, create_partial_swap_note};
 
 #[test]
 fn prove_partial_public_swap_script() {

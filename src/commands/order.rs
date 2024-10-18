@@ -12,11 +12,8 @@ use miden_client::{
         build_swap_tag,
         request::{SwapTransactionData, TransactionRequest},
     },
-    utils::{Deserializable, Serializable},
-    Client, Felt, Word,
+    Client, Felt,
 };
-use miden_objects::accounts::AuthSecretKey;
-use miden_objects::crypto::hash::rpo::Rpo256;
 use miden_objects::transaction::OutputNote;
 use miden_objects::vm::AdviceMap;
 
@@ -201,7 +198,7 @@ impl OrderCmd {
         Ok(())
     }
 
-    pub fn fill_order(
+    pub fn _fill_order(
         incoming_order: Order,
         existing_orders: Vec<Order>,
     ) -> Result<Vec<Order>, OrderError> {
@@ -250,7 +247,7 @@ impl OrderCmd {
         Ok(final_orders)
     }
 
-    async fn fill_success<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(
+    async fn _fill_success<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(
         orders: Vec<Order>,
         account_id: AccountId,
         client: &mut Client<N, R, S, A>,
@@ -300,7 +297,7 @@ impl OrderCmd {
         Ok(())
     }
 
-    async fn fill_failure<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(
+    async fn _fill_failure<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(
         order: Order,
         account_id: AccountId,
         client: &mut Client<N, R, S, A>,

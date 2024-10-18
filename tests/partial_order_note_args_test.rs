@@ -1,4 +1,3 @@
-use crate::common::*;
 use miden_client::transactions::OutputNote;
 use miden_lib::transaction::TransactionKernel;
 use miden_objects::{
@@ -13,6 +12,9 @@ use miden_tx::testing::mock_chain::{Auth, MockChain};
 use std::collections::BTreeMap;
 
 use miden_objects::transaction::TransactionArgs;
+
+mod common;
+use common::{compute_p2id_serial_num, create_p2id_note, create_partial_swap_note};
 
 // @dev Currently failing with "The nonce did not increase after a state changing transaction"
 #[test]
