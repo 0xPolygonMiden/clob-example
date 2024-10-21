@@ -12,20 +12,15 @@ use miden_client::{
         build_swap_tag,
         request::{SwapTransactionData, TransactionRequest},
     },
-    Client, Felt,
+    Client,
 };
-use miden_objects::transaction::OutputNote;
-use miden_objects::vm::AdviceMap;
 
 use clap::Parser;
 
 use crate::{
     errors::OrderError,
     order::{match_orders, sort_orders, Order},
-    utils::{
-        compute_p2id_serial_num, create_p2id_note, create_partial_swap_note, get_notes_by_tag,
-        print_balance_update, print_order_table,
-    },
+    utils::{get_notes_by_tag, print_balance_update, print_order_table},
 };
 
 #[derive(Debug, Clone, Parser)]
@@ -73,132 +68,30 @@ impl OrderCmd {
         // Get relevant notes
         let tag = build_swap_tag(NoteType::Public, target_faucet_id, source_faucet_id).unwrap();
         let notes = get_notes_by_tag(&client, tag);
-        let existing_orders: Vec<Order> = notes.clone().into_iter().map(Order::from).collect();
+        let existing_orders: Vec<Order> = notes.into_iter().map(Order::from).collect();
 
         assert!(
             !existing_orders.is_empty(),
             "There are no relevant orders available."
         );
 
-        // find matching orders
-        let matching_orders: Vec<Order> = notes
-            .into_iter()
-            .map(Order::from)
-            .filter(|order| match_orders(incoming_order, *order).is_ok())
-            .collect();
-        let sorted_orders = sort_orders(matching_orders);
-
-        print_order_table("", &sorted_orders);
-
-        let swap_note_order = sorted_orders.first().unwrap();
-
-        let swap_note = client
-            .get_input_note(swap_note_order.id().unwrap())
-            .unwrap();
-
-        println!("account id consumer: {:?}", account_id);
-        println!("source asset: {:?}", source_faucet_id);
-        println!("target asset: {:?}", target_faucet_id);
-        println!("swap inputs: {:?}", swap_note.details().inputs());
-        println!("swap asset: {:?}", swap_note.assets());
-
-        // ________ Building Output Notes ______ //
-        // Hard Coded all swap notes to be 10 for 10
-        // the user filling the order is filling half: 5
-
-        let creator: AccountId =
-            match AccountId::try_from(swap_note.details().inputs().get(12).unwrap().as_int()) {
-                Ok(account_id) => account_id,
-                Err(e) => {
-                    panic!("Failed to convert to AccountId: {:?}", e);
-                }
-            };
-
-        let swap_serial_num = swap_note.details().serial_num();
-        let fill_number = swap_note.details().inputs().get(8).unwrap().as_int();
-        let next_fill_number = fill_number + 1;
-
-        let offered_remaining: Asset = FungibleAsset::new(target_faucet_id, 5).unwrap().into();
-        let requested_remaining: Asset = FungibleAsset::new(source_faucet_id, 5).unwrap().into();
-
-        let requested_filled: Asset = FungibleAsset::new(source_faucet_id, 5).unwrap().into();
-
-        let output_swap_note = create_partial_swap_note(
-            creator,
-            account_id,
-            offered_remaining,
-            requested_remaining,
-            swap_serial_num,
-            next_fill_number,
-        )
-        .unwrap();
-
-        assert_eq!(
-            *swap_note.details().script_hash(),
-            output_swap_note.script().hash(),
-            "The swap script hash and output swap script hash do not match"
-        );
-
-        let p2id_serial_num = compute_p2id_serial_num(swap_serial_num, next_fill_number);
-        let expected_p2id_note = create_p2id_note(
-            account_id,
-            creator,
-            vec![requested_filled],
-            NoteType::Public,
-            Felt::new(0),
-            p2id_serial_num,
-        )
-        .unwrap();
-
-        let expected_swap_note = OutputNote::Full(output_swap_note);
-        let expected_p2id_note = OutputNote::Full(expected_p2id_note);
-
-        // account.vault().get_balance(source_faucet_id).unwrap()
-
-        // ######### Setting up TX ######### //
-
-        // note args to SWAPp: 5 in this case means to give 5 tokens to SWAPp creator
-        const NOTE_ARGS: [Felt; 4] = [Felt::new(5), Felt::new(0), Felt::new(0), Felt::new(0)];
-        let note_args_commitment: [Felt; 4] = NOTE_ARGS;
-
-        let note_args_map = vec![(swap_note.id(), Some(note_args_commitment))];
-        let mut advice_map = AdviceMap::new();
-        advice_map.insert(note_args_commitment.into(), NOTE_ARGS.to_vec());
-
-        let transaction_request = TransactionRequest::new()
-            .with_authenticated_input_notes(note_args_map)
-            .with_own_output_notes(vec![expected_p2id_note, expected_swap_note])
-            .unwrap();
-
-        //#########
-        println!("Executing transaction...");
-        let transaction_execution_result = client
-            .new_transaction(account_id, transaction_request)
-            .unwrap();
-
-        client
-            .submit_transaction(transaction_execution_result)
-            .await
-            .unwrap();
-
-        /*
         // fill order
         match Self::fill_order(incoming_order, existing_orders) {
             Ok(orders) => Self::fill_success(orders, account_id, client)
                 .await
-                .map_err(|_| "Failed in fill success.".to_string())?,
+                .map_err(|e| format!("Failed in fill success: {}", e))?,
             Err(err) => match err {
                 OrderError::FailedFill(order) => Self::fill_failure(order, account_id, client)
                     .await
-                    .map_err(|_| "Failed in fill failure.".to_string())?,
+                    .map_err(|e| format!("Failed in fill failure: {}", e))?,
                 _ => panic!("Unknown error."),
             },
-        } */
+        }
 
         Ok(())
     }
 
-    pub fn _fill_order(
+    pub fn fill_order(
         incoming_order: Order,
         existing_orders: Vec<Order>,
     ) -> Result<Vec<Order>, OrderError> {
@@ -247,7 +140,7 @@ impl OrderCmd {
         Ok(final_orders)
     }
 
-    async fn _fill_success<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(
+    async fn fill_success<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(
         orders: Vec<Order>,
         account_id: AccountId,
         client: &mut Client<N, R, S, A>,
@@ -297,7 +190,7 @@ impl OrderCmd {
         Ok(())
     }
 
-    async fn _fill_failure<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(
+    async fn fill_failure<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(
         order: Order,
         account_id: AccountId,
         client: &mut Client<N, R, S, A>,

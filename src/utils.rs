@@ -159,7 +159,7 @@ pub fn setup_client() -> Client<
 // Transaction Request Creation
 // ================================================================================================
 
-pub fn create_swap_notes_transaction_request(
+pub fn create_partial_swap_notes_transaction_request(
     num_notes: u8,
     sender: AccountId,
     offering_faucet: AccountId,
@@ -196,6 +196,7 @@ pub fn create_swap_notes_transaction_request(
             swap_serial_num,
             0, // 0 fill count
         )?;
+
         // expected_future_notes.push(payback_note_details);
         own_output_notes.push(OutputNote::Full(created_swap_note));
     }

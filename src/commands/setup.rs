@@ -23,7 +23,7 @@ use tokio::time::sleep;
 
 use crate::{
     constants::{CLOB_DATA_FILE_PATH, DB_FILE_PATH},
-    utils::{clear_notes_tables, create_swap_notes_transaction_request},
+    utils::{clear_notes_tables, create_partial_swap_notes_transaction_request},
 };
 
 //
@@ -32,9 +32,7 @@ use crate::{
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Clob {
     pub faucet1: AccountId,
-    pub faucet1_name: String,
     pub faucet2: AccountId,
-    pub faucet2_name: String,
     pub admin: AccountId,
     pub user: AccountId,
     pub swap_1_2_tag: NoteTag,
@@ -69,10 +67,28 @@ impl SetupCmd {
         Self::fund_wallet(faucet1.id(), 500, faucet2.id(), 500, user.id(), client).await;
 
         // Create 50 ASSETA/ASSETB swap notes
-        Self::create_swap_notes(50, faucet1.id(), 500, faucet2.id(), 500, admin.id(), client).await;
+        Self::create_partial_swap_notes(
+            50,
+            faucet1.id(),
+            500,
+            faucet2.id(),
+            500,
+            admin.id(),
+            client,
+        )
+        .await;
 
         // Create 50 ASSETB/ASSETA swap notes
-        Self::create_swap_notes(50, faucet2.id(), 500, faucet1.id(), 500, admin.id(), client).await;
+        Self::create_partial_swap_notes(
+            50,
+            faucet2.id(),
+            500,
+            faucet1.id(),
+            500,
+            admin.id(),
+            client,
+        )
+        .await;
 
         // Build note tags
         let swap_1_2_tag = build_swap_tag(NoteType::Public, faucet1.id(), faucet2.id()).unwrap();
@@ -96,9 +112,7 @@ impl SetupCmd {
 
         Self::export_clob_data(
             faucet1.id(),
-            "BTC",
             faucet2.id(),
-            "ETH",
             admin.id(),
             user.id(),
             swap_1_2_tag,
@@ -110,7 +124,7 @@ impl SetupCmd {
         Ok(())
     }
 
-    async fn create_swap_notes<
+    async fn create_partial_swap_notes<
         N: NodeRpcClient,
         R: FeltRng,
         S: Store,
@@ -124,7 +138,7 @@ impl SetupCmd {
         user: AccountId,
         client: &mut Client<N, R, S, A>,
     ) {
-        let transaction_request = create_swap_notes_transaction_request(
+        let transaction_request = create_partial_swap_notes_transaction_request(
             num_notes,
             user,
             faucet1,
@@ -223,9 +237,7 @@ impl SetupCmd {
 
     fn export_clob_data(
         faucet1: AccountId,
-        faucet1_name: &str,
         faucet2: AccountId,
-        faucet2_name: &str,
         admin: AccountId,
         user: AccountId,
         swap_1_2_tag: NoteTag,
@@ -233,9 +245,7 @@ impl SetupCmd {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let clob = Clob {
             faucet1,
-            faucet1_name: faucet1_name.to_string(),
             faucet2,
-            faucet2_name: faucet2_name.to_string(),
             admin,
             user,
             swap_1_2_tag,
