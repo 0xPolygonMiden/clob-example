@@ -5,17 +5,13 @@ use miden_client::{
     auth::{StoreAuthenticator, TransactionAuthenticator},
     config::{Endpoint, RpcConfig},
     crypto::{FeltRng, RpoRandomCoin},
-    notes::{NoteTag, NoteType},
+    notes::NoteTag,
     rpc::{NodeRpcClient, TonicRpcClient},
     store::{
         sqlite_store::{config::SqliteStoreConfig, SqliteStore},
         InputNoteRecord, NoteFilter, Store,
     },
-    transactions::{
-        build_swap_tag,
-        request::{TransactionRequest, TransactionRequestError},
-        OutputNote,
-    },
+    transactions::request::{TransactionRequest, TransactionRequestError},
     Client, Felt,
 };
 use rand::{seq::SliceRandom, Rng};
@@ -24,96 +20,10 @@ use std::rc::Rc;
 
 use crate::order::Order;
 
-use miden_lib::transaction::TransactionKernel;
-use miden_objects::assembly::Assembler;
 use miden_objects::Hasher;
-use miden_objects::{
-    notes::{
-        Note, NoteAssets, NoteExecutionHint, NoteExecutionMode, NoteInputs, NoteMetadata,
-        NoteRecipient, NoteScript,
-    },
-    NoteError, Word,
-};
 
 // Partially Fillable SWAP note
 // ================================================================================================
-
-pub fn create_partial_swap_note(
-    creator: AccountId,
-    last_consumer: AccountId,
-    offered_asset: Asset,
-    requested_asset: Asset,
-    swap_serial_num: [Felt; 4],
-    fill_number: u64,
-) -> Result<Note, NoteError> {
-    let assembler: Assembler = TransactionKernel::assembler_testing();
-
-    let note_code = include_str!("../scripts/SWAPp.masm");
-    let note_script = NoteScript::compile(note_code, assembler).unwrap();
-    let note_type = NoteType::Public;
-
-    let requested_asset_word: Word = requested_asset.into();
-    let tag = build_swap_tag(
-        note_type,
-        offered_asset.faucet_id(),
-        requested_asset.faucet_id(),
-    )?;
-
-    let inputs = NoteInputs::new(vec![
-        requested_asset_word[0],
-        requested_asset_word[1],
-        requested_asset_word[2],
-        requested_asset_word[3],
-        tag.inner().into(),
-        Felt::new(0),
-        Felt::new(0),
-        Felt::new(0),
-        Felt::new(fill_number),
-        Felt::new(0),
-        Felt::new(0),
-        Felt::new(0),
-        creator.into(),
-    ])?;
-
-    let aux = Felt::new(0);
-
-    // build the outgoing note
-    let metadata = NoteMetadata::new(
-        last_consumer,
-        note_type,
-        tag,
-        NoteExecutionHint::always(),
-        aux,
-    )?;
-
-    let assets = NoteAssets::new(vec![offered_asset])?;
-    let recipient = NoteRecipient::new(swap_serial_num, note_script.clone(), inputs.clone());
-    let note = Note::new(assets.clone(), metadata, recipient.clone());
-
-    Ok(note)
-}
-
-pub fn create_p2id_note(
-    sender: AccountId,
-    target: AccountId,
-    assets: Vec<Asset>,
-    note_type: NoteType,
-    aux: Felt,
-    serial_num: [Felt; 4],
-) -> Result<Note, NoteError> {
-    let assembler: Assembler = TransactionKernel::assembler_testing().with_debug_mode(true);
-    let note_code = include_str!("../scripts/P2ID.masm");
-
-    let note_script = NoteScript::compile(note_code, assembler).unwrap();
-
-    let inputs = NoteInputs::new(vec![target.into()])?;
-    let tag = NoteTag::from_account_id(target, NoteExecutionMode::Local)?;
-
-    let metadata = NoteMetadata::new(sender, note_type, tag, NoteExecutionHint::always(), aux)?;
-    let vault = NoteAssets::new(assets)?;
-    let recipient = NoteRecipient::new(serial_num, note_script, inputs);
-    Ok(Note::new(vault, metadata, recipient))
-}
 
 pub fn compute_p2id_serial_num(swap_serial_num: [Felt; 4], swap_count: u64) -> [Felt; 4] {
     let swap_count_word = [
@@ -188,17 +98,19 @@ pub fn create_partial_swap_notes_transaction_request(
         );
 
         let swap_serial_num = felt_rng.draw_word();
-        let created_swap_note = create_partial_swap_note(
-            sender, // creator
-            sender, // init to creator
-            offered_asset,
-            requested_asset,
-            swap_serial_num,
-            0, // 0 fill count
-        )?;
+
+        // TODO: Add back when the script works
+        // let created_swap_note = create_partial_swap_note(
+        //     sender, // creator
+        //     sender, // init to creator
+        //     offered_asset,
+        //     requested_asset,
+        //     swap_serial_num,
+        //     0, // 0 fill count
+        // )?;
 
         // expected_future_notes.push(payback_note_details);
-        own_output_notes.push(OutputNote::Full(created_swap_note));
+        // own_output_notes.push(OutputNote::Full(created_swap_note));
     }
 
     TransactionRequest::new().with_own_output_notes(own_output_notes)
