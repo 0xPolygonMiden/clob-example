@@ -1,4 +1,3 @@
-use core::panic;
 use miden_client::{
     accounts::AccountId,
     assets::{Asset, FungibleAsset},
@@ -11,31 +10,13 @@ use miden_client::{
         sqlite_store::{config::SqliteStoreConfig, SqliteStore},
         InputNoteRecord, NoteFilter, Store,
     },
-    transactions::request::{TransactionRequest, TransactionRequestError},
     Client, Felt,
 };
-use rand::{seq::SliceRandom, Rng};
+use rand::Rng;
 use rusqlite::{Connection, Result};
 use std::rc::Rc;
 
 use crate::order::Order;
-
-use miden_objects::Hasher;
-
-// Partially Fillable SWAP note
-// ================================================================================================
-
-pub fn compute_p2id_serial_num(swap_serial_num: [Felt; 4], swap_count: u64) -> [Felt; 4] {
-    let swap_count_word = [
-        Felt::new(swap_count),
-        Felt::new(0),
-        Felt::new(0),
-        Felt::new(0),
-    ];
-    let p2id_serial_num = Hasher::merge(&[swap_serial_num.into(), swap_count_word.into()]);
-
-    p2id_serial_num.into()
-}
 
 // Client Setup
 // ================================================================================================
@@ -64,92 +45,6 @@ pub fn setup_client() -> Client<
         authenticator,
         in_debug_mode,
     )
-}
-
-// Transaction Request Creation
-// ================================================================================================
-
-pub fn create_partial_swap_notes_transaction_request(
-    num_notes: u8,
-    sender: AccountId,
-    offering_faucet: AccountId,
-    _total_asset_offering: u64,
-    requesting_faucet: AccountId,
-    _total_asset_requesting: u64,
-    felt_rng: &mut impl FeltRng,
-) -> Result<TransactionRequest, TransactionRequestError> {
-    // Setup note args
-    let mut own_output_notes = vec![];
-
-    // TODO: Use random distribution, 10 for testing
-    // Generate random distributions for offering and requesting assets
-    let offering_distribution = [10u64; 50];
-    // generate_random_distribution(num_notes as usize, total_asset_offering);
-
-    let requesting_distribution = [10u64; 50];
-    // generate_random_distribution(num_notes as usize, total_asset_requesting);
-
-    for i in 0..num_notes {
-        let offered_asset = Asset::Fungible(
-            FungibleAsset::new(offering_faucet, offering_distribution[i as usize]).unwrap(),
-        );
-        let requested_asset = Asset::Fungible(
-            FungibleAsset::new(requesting_faucet, requesting_distribution[i as usize]).unwrap(),
-        );
-
-        let swap_serial_num = felt_rng.draw_word();
-
-        // TODO: Add back when the script works
-        // let created_swap_note = create_partial_swap_note(
-        //     sender, // creator
-        //     sender, // init to creator
-        //     offered_asset,
-        //     requested_asset,
-        //     swap_serial_num,
-        //     0, // 0 fill count
-        // )?;
-
-        // expected_future_notes.push(payback_note_details);
-        // own_output_notes.push(OutputNote::Full(created_swap_note));
-    }
-
-    TransactionRequest::new().with_own_output_notes(own_output_notes)
-}
-
-pub fn _generate_random_distribution(n: usize, total: u64) -> Vec<u64> {
-    if total < n as u64 {
-        panic!("Total must at least be equal to n to make sure that all values are non-zero.")
-    }
-
-    let mut rng = rand::thread_rng();
-    let mut result = Vec::with_capacity(n);
-    let mut remaining = total;
-
-    // Generate n-1 random numbers
-    for _ in 0..n - 1 {
-        if remaining == 0 {
-            result.push(1); // Ensure non-zero
-            continue;
-        }
-
-        let max = remaining.saturating_sub(n as u64 - result.len() as u64 - 1);
-        let value = if max > 1 {
-            rng.gen_range(1..=(total / n as u64))
-        } else {
-            1
-        };
-
-        result.push(value);
-        remaining -= value;
-    }
-
-    // Add the last number to make the sum equal to total
-    result.push(remaining.max(1));
-
-    // Shuffle the vector to randomize the order
-    result.shuffle(&mut rng);
-
-    result
 }
 
 pub fn get_notes_by_tag<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(

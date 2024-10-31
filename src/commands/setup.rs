@@ -23,10 +23,11 @@ use tokio::time::sleep;
 
 use crate::{
     constants::{CLOB_DATA_FILE_PATH, DB_FILE_PATH},
-    utils::{clear_notes_tables, create_partial_swap_notes_transaction_request},
+    note::create_partial_swap_notes_transaction_request,
+    utils::clear_notes_tables,
 };
 
-//
+// CLOB
 // ================================================================================================
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -1,12 +1,5 @@
 use clap::Parser;
-use cli::Cli;
-
-mod cli;
-mod commands;
-mod constants;
-mod errors;
-mod order;
-mod utils;
+use miden_order_book::cli::Cli;
 
 #[tokio::main]
 async fn main() -> Result<(), String> {
