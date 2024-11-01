@@ -79,11 +79,11 @@ impl OrderCmd {
         match Self::fill_order(incoming_order, existing_orders) {
             Ok(orders) => Self::fill_success(orders, account_id, client)
                 .await
-                .map_err(|_| "Failed in fill success.".to_string())?,
+                .map_err(|e| format!("Failed in fill success: {}", e))?,
             Err(err) => match err {
                 OrderError::FailedFill(order) => Self::fill_failure(order, account_id, client)
                     .await
-                    .map_err(|_| "Failed in fill failure.".to_string())?,
+                    .map_err(|e| format!("Failed in fill failure: {}", e))?,
                 _ => panic!("Unknown error."),
             },
         }

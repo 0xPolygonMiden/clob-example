@@ -8,7 +8,7 @@ use miden_client::{
 };
 
 #[derive(Debug, Clone, Parser)]
-#[clap(about = "Create a new account and login")]
+#[clap(about = "List avaible order book orders")]
 pub struct ListCmd {
     // tags
     pub tags: Vec<u32>,

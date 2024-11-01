@@ -23,18 +23,18 @@ use tokio::time::sleep;
 
 use crate::{
     constants::{CLOB_DATA_FILE_PATH, DB_FILE_PATH},
-    utils::{clear_notes_tables, create_swap_notes_transaction_request},
+    note::create_partial_swap_notes_transaction_request,
+    utils::clear_notes_tables,
 };
 
-//
+// CLOB
 // ================================================================================================
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Clob {
     pub faucet1: AccountId,
-    pub faucet1_name: String,
     pub faucet2: AccountId,
-    pub faucet2_name: String,
+    pub admin: AccountId,
     pub user: AccountId,
     pub swap_1_2_tag: NoteTag,
     pub swap_2_1_tag: NoteTag,
@@ -60,16 +60,36 @@ impl SetupCmd {
         let (faucet2, _) = Self::create_faucet(1000, "ASSETB", client);
 
         // Create user account
+        let (admin, _) = Self::create_wallet(client);
         let (user, _) = Self::create_wallet(client);
 
         // Mint assets for user
-        Self::fund_user_wallet(faucet1.id(), 1000, faucet2.id(), 1000, user.id(), client).await;
+        Self::fund_wallet(faucet1.id(), 500, faucet2.id(), 500, admin.id(), client).await;
+        Self::fund_wallet(faucet1.id(), 500, faucet2.id(), 500, user.id(), client).await;
 
         // Create 50 ASSETA/ASSETB swap notes
-        Self::create_swap_notes(50, faucet1.id(), 500, faucet2.id(), 500, user.id(), client).await;
+        Self::create_partial_swap_notes(
+            50,
+            faucet1.id(),
+            500,
+            faucet2.id(),
+            500,
+            admin.id(),
+            client,
+        )
+        .await;
 
         // Create 50 ASSETB/ASSETA swap notes
-        Self::create_swap_notes(50, faucet2.id(), 500, faucet1.id(), 500, user.id(), client).await;
+        Self::create_partial_swap_notes(
+            50,
+            faucet2.id(),
+            500,
+            faucet1.id(),
+            500,
+            admin.id(),
+            client,
+        )
+        .await;
 
         // Build note tags
         let swap_1_2_tag = build_swap_tag(NoteType::Public, faucet1.id(), faucet2.id()).unwrap();
@@ -85,6 +105,7 @@ impl SetupCmd {
         Self::print_clob_data(
             faucet1.id(),
             faucet2.id(),
+            admin.id(),
             user.id(),
             swap_1_2_tag,
             swap_2_1_tag,
@@ -92,9 +113,8 @@ impl SetupCmd {
 
         Self::export_clob_data(
             faucet1.id(),
-            "BTC",
             faucet2.id(),
-            "ETH",
+            admin.id(),
             user.id(),
             swap_1_2_tag,
             swap_2_1_tag,
@@ -102,11 +122,10 @@ impl SetupCmd {
         .unwrap();
 
         println!("CLOB successfully setup.");
-
         Ok(())
     }
 
-    async fn create_swap_notes<
+    async fn create_partial_swap_notes<
         N: NodeRpcClient,
         R: FeltRng,
         S: Store,
@@ -120,7 +139,7 @@ impl SetupCmd {
         user: AccountId,
         client: &mut Client<N, R, S, A>,
     ) {
-        let transaction_request = create_swap_notes_transaction_request(
+        let transaction_request = create_partial_swap_notes_transaction_request(
             num_notes,
             user,
             faucet1,
@@ -134,12 +153,7 @@ impl SetupCmd {
         client.submit_transaction(tx_result).await.unwrap();
     }
 
-    async fn fund_user_wallet<
-        N: NodeRpcClient,
-        R: FeltRng,
-        S: Store,
-        A: TransactionAuthenticator,
-    >(
+    async fn fund_wallet<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(
         faucet1: AccountId,
         asset_a_amount: u64,
         faucet2: AccountId,
@@ -209,6 +223,7 @@ impl SetupCmd {
     fn print_clob_data(
         faucet1: AccountId,
         faucet2: AccountId,
+        admin: AccountId,
         user: AccountId,
         swap_1_2_tag: NoteTag,
         swap_2_1_tag: NoteTag,
@@ -217,23 +232,22 @@ impl SetupCmd {
         println!("faucet2: {}", faucet2);
         println!("swap_1_2_tag: {}", swap_1_2_tag);
         println!("swap_2_1_tag: {}", swap_2_1_tag);
+        println!("Admin: {}", admin);
         println!("User: {}", user);
     }
 
     fn export_clob_data(
         faucet1: AccountId,
-        faucet1_name: &str,
         faucet2: AccountId,
-        faucet2_name: &str,
+        admin: AccountId,
         user: AccountId,
         swap_1_2_tag: NoteTag,
         swap_2_1_tag: NoteTag,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let clob = Clob {
             faucet1,
-            faucet1_name: faucet1_name.to_string(),
             faucet2,
-            faucet2_name: faucet2_name.to_string(),
+            admin,
             user,
             swap_1_2_tag,
             swap_2_1_tag,

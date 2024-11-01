@@ -1,24 +1,18 @@
-use core::panic;
 use miden_client::{
     accounts::AccountId,
     assets::{Asset, FungibleAsset},
     auth::{StoreAuthenticator, TransactionAuthenticator},
     config::{Endpoint, RpcConfig},
     crypto::{FeltRng, RpoRandomCoin},
-    notes::{NoteTag, NoteType},
+    notes::NoteTag,
     rpc::{NodeRpcClient, TonicRpcClient},
     store::{
         sqlite_store::{config::SqliteStoreConfig, SqliteStore},
         InputNoteRecord, NoteFilter, Store,
     },
-    transactions::{
-        request::{TransactionRequest, TransactionRequestError},
-        OutputNote,
-    },
     Client, Felt,
 };
-use miden_lib::notes::create_swap_note;
-use rand::{seq::SliceRandom, Rng};
+use rand::Rng;
 use rusqlite::{Connection, Result};
 use std::rc::Rc;
 
@@ -53,91 +47,6 @@ pub fn setup_client() -> Client<
     )
 }
 
-// Transaction Request Creation
-// ================================================================================================
-
-pub fn create_swap_notes_transaction_request(
-    num_notes: u8,
-    sender: AccountId,
-    offering_faucet: AccountId,
-    total_asset_offering: u64,
-    requesting_faucet: AccountId,
-    total_asset_requesting: u64,
-    felt_rng: &mut impl FeltRng,
-) -> Result<TransactionRequest, TransactionRequestError> {
-    // Setup note variables
-    let mut expected_future_notes = vec![];
-    let mut own_output_notes = vec![];
-    let note_type = NoteType::Public;
-    let aux = Felt::new(0);
-
-    // Generate random distributions for offering and requesting assets
-    let offering_distribution =
-        generate_random_distribution(num_notes as usize, total_asset_offering);
-    let requesting_distribution =
-        generate_random_distribution(num_notes as usize, total_asset_requesting);
-
-    for i in 0..num_notes {
-        let offered_asset = Asset::Fungible(
-            FungibleAsset::new(offering_faucet, offering_distribution[i as usize]).unwrap(),
-        );
-        let requested_asset = Asset::Fungible(
-            FungibleAsset::new(requesting_faucet, requesting_distribution[i as usize]).unwrap(),
-        );
-
-        let (created_note, payback_note_details) = create_swap_note(
-            sender,
-            offered_asset,
-            requested_asset,
-            note_type,
-            aux,
-            felt_rng,
-        )?;
-        expected_future_notes.push(payback_note_details);
-        own_output_notes.push(OutputNote::Full(created_note));
-    }
-
-    TransactionRequest::new()
-        .with_expected_future_notes(expected_future_notes)
-        .with_own_output_notes(own_output_notes)
-}
-
-pub fn generate_random_distribution(n: usize, total: u64) -> Vec<u64> {
-    if total < n as u64 {
-        panic!("Total must at least be equal to n to make sure that all values are non-zero.")
-    }
-
-    let mut rng = rand::thread_rng();
-    let mut result = Vec::with_capacity(n);
-    let mut remaining = total;
-
-    // Generate n-1 random numbers
-    for _ in 0..n - 1 {
-        if remaining == 0 {
-            result.push(1); // Ensure non-zero
-            continue;
-        }
-
-        let max = remaining.saturating_sub(n as u64 - result.len() as u64 - 1);
-        let value = if max > 1 {
-            rng.gen_range(1..=(total / n as u64))
-        } else {
-            1
-        };
-
-        result.push(value);
-        remaining -= value;
-    }
-
-    // Add the last number to make the sum equal to total
-    result.push(remaining.max(1));
-
-    // Shuffle the vector to randomize the order
-    result.shuffle(&mut rng);
-
-    result
-}
-
 pub fn get_notes_by_tag<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(
     client: &Client<N, R, S, A>,
     tag: NoteTag,
@@ -161,8 +70,8 @@ pub fn get_notes_by_tag<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAu
 pub fn get_assets_from_swap_note(note: &InputNoteRecord) -> (Asset, Asset) {
     let source_asset =
         Asset::Fungible(note.assets().iter().collect::<Vec<&Asset>>()[0].unwrap_fungible());
-    let target_faucet = AccountId::try_from(note.details().inputs()[7]).unwrap();
-    let target_amount = note.details().inputs()[4].as_int();
+    let target_faucet = AccountId::try_from(note.details().inputs()[3]).unwrap();
+    let target_amount = note.details().inputs()[0].as_int();
     let target_asset = Asset::Fungible(FungibleAsset::new(target_faucet, target_amount).unwrap());
     (source_asset, target_asset)
 }
