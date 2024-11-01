@@ -89,7 +89,7 @@ pub fn create_swapp_note<R: FeltRng>(
         NoteExecutionHint::always().into(),
     ])?;
 
-    // build the tag for the SWAP use case
+    // build the tag for the SWAPP use case
     let tag = build_swap_tag(
         note_type,
         offered_asset.faucet_id(),
