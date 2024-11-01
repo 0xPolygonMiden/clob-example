@@ -6,10 +6,7 @@ use miden_client::{
         Note, NoteAssets, NoteError, NoteExecutionHint, NoteExecutionMode, NoteInputs,
         NoteMetadata, NoteRecipient, NoteScript, NoteTag, NoteType,
     },
-    transactions::{
-        build_swap_tag,
-        request::{TransactionRequest, TransactionRequestError},
-    },
+    transactions::{build_swap_tag, TransactionRequest, TransactionRequestError},
     Felt, Word,
 };
 use miden_lib::transaction::TransactionKernel;

@@ -1,56 +1,56 @@
 use miden_client::{
     accounts::AccountId,
     assets::{Asset, FungibleAsset},
-    auth::{StoreAuthenticator, TransactionAuthenticator},
     config::{Endpoint, RpcConfig},
     crypto::{FeltRng, RpoRandomCoin},
     notes::NoteTag,
-    rpc::{NodeRpcClient, TonicRpcClient},
+    rpc::TonicRpcClient,
     store::{
         sqlite_store::{config::SqliteStoreConfig, SqliteStore},
-        InputNoteRecord, NoteFilter, Store,
+        InputNoteRecord, NoteFilter, StoreAuthenticator,
     },
     Client, Felt,
 };
+use miden_tx::{LocalTransactionProver, ProvingOptions};
 use rand::Rng;
 use rusqlite::{Connection, Result};
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::order::Order;
 
 // Client Setup
 // ================================================================================================
 
-pub fn setup_client() -> Client<
-    TonicRpcClient,
-    RpoRandomCoin,
-    SqliteStore,
-    StoreAuthenticator<RpoRandomCoin, SqliteStore>,
-> {
+pub fn setup_client() -> Client<impl FeltRng> {
     let store_config = SqliteStoreConfig::default();
-    let store = Rc::new(SqliteStore::new(&store_config).unwrap());
+    let store = SqliteStore::new(&store_config).unwrap();
+    let store = Arc::new(store);
+
     let mut rng = rand::thread_rng();
     let coin_seed: [u64; 4] = rng.gen();
+
     let rng = RpoRandomCoin::new(coin_seed.map(Felt::new));
     let authenticator = StoreAuthenticator::new_with_rng(store.clone(), rng);
+    let tx_prover = LocalTransactionProver::new(ProvingOptions::default());
+
     let rpc_config = RpcConfig {
         endpoint: Endpoint::new("http".to_string(), "localhost".to_string(), 57291),
         timeout_ms: 10000,
     };
+
     let in_debug_mode = true;
+
     Client::new(
-        TonicRpcClient::new(&rpc_config),
+        Box::new(TonicRpcClient::new(&rpc_config)),
         rng,
         store,
-        authenticator,
+        Arc::new(authenticator),
+        Arc::new(tx_prover),
         in_debug_mode,
     )
 }
 
-pub fn get_notes_by_tag<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(
-    client: &Client<N, R, S, A>,
-    tag: NoteTag,
-) -> Vec<InputNoteRecord> {
+pub fn get_notes_by_tag(client: &Client<impl FeltRng>, tag: NoteTag) -> Vec<InputNoteRecord> {
     let notes = client.get_input_notes(NoteFilter::All).unwrap();
 
     notes
@@ -70,8 +70,8 @@ pub fn get_notes_by_tag<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAu
 pub fn get_assets_from_swap_note(note: &InputNoteRecord) -> (Asset, Asset) {
     let source_asset =
         Asset::Fungible(note.assets().iter().collect::<Vec<&Asset>>()[0].unwrap_fungible());
-    let target_faucet = AccountId::try_from(note.details().inputs()[3]).unwrap();
-    let target_amount = note.details().inputs()[0].as_int();
+    let target_faucet = AccountId::try_from(note.details().inputs().values()[3]).unwrap();
+    let target_amount = note.details().inputs().values()[0].as_int();
     let target_asset = Asset::Fungible(FungibleAsset::new(target_faucet, target_amount).unwrap());
     (source_asset, target_asset)
 }

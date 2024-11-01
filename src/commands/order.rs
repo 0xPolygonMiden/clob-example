@@ -3,15 +3,9 @@ use std::io::{self, Write};
 use miden_client::{
     accounts::AccountId,
     assets::{Asset, FungibleAsset},
-    auth::TransactionAuthenticator,
     crypto::FeltRng,
     notes::{NoteId, NoteType},
-    rpc::NodeRpcClient,
-    store::Store,
-    transactions::{
-        build_swap_tag,
-        request::{SwapTransactionData, TransactionRequest},
-    },
+    transactions::{build_swap_tag, SwapTransactionData, TransactionRequest},
     Client,
 };
 
@@ -43,10 +37,7 @@ pub struct OrderCmd {
 }
 
 impl OrderCmd {
-    pub async fn execute<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(
-        &self,
-        client: &mut Client<N, R, S, A>,
-    ) -> Result<(), String> {
+    pub async fn execute(&self, client: &mut Client<impl FeltRng>) -> Result<(), String> {
         // Parse id's
         let account_id = AccountId::from_hex(self.user.as_str()).unwrap();
         let source_faucet_id = AccountId::from_hex(self.source_faucet.as_str()).unwrap();
@@ -67,7 +58,7 @@ impl OrderCmd {
 
         // Get relevant notes
         let tag = build_swap_tag(NoteType::Public, target_faucet_id, source_faucet_id).unwrap();
-        let notes = get_notes_by_tag(&client, tag);
+        let notes = get_notes_by_tag(client, tag);
         let existing_orders: Vec<Order> = notes.into_iter().map(Order::from).collect();
 
         assert!(
@@ -140,10 +131,10 @@ impl OrderCmd {
         Ok(final_orders)
     }
 
-    async fn fill_success<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(
+    async fn fill_success(
         orders: Vec<Order>,
         account_id: AccountId,
-        client: &mut Client<N, R, S, A>,
+        client: &mut Client<impl FeltRng>,
     ) -> Result<(), OrderError> {
         // print final orders
         print_order_table("Final orders:", &orders);
@@ -190,10 +181,10 @@ impl OrderCmd {
         Ok(())
     }
 
-    async fn fill_failure<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(
+    async fn fill_failure(
         order: Order,
         account_id: AccountId,
-        client: &mut Client<N, R, S, A>,
+        client: &mut Client<impl FeltRng>,
     ) -> Result<(), OrderError> {
         println!("Unable to fill the requested order.");
 

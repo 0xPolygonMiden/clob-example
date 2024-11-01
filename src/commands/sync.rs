@@ -1,18 +1,13 @@
 use clap::Parser;
 
-use miden_client::{
-    auth::TransactionAuthenticator, crypto::FeltRng, rpc::NodeRpcClient, store::Store, Client,
-};
+use miden_client::{crypto::FeltRng, Client};
 
 #[derive(Debug, Clone, Parser)]
 #[clap(about = "Sync rollup state")]
 pub struct SyncCmd {}
 
 impl SyncCmd {
-    pub async fn execute<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(
-        &self,
-        client: &mut Client<N, R, S, A>,
-    ) -> Result<(), String> {
+    pub async fn execute(&self, client: &mut Client<impl FeltRng>) -> Result<(), String> {
         client.sync_state().await?;
         println!("Sync successful.");
         Ok(())

@@ -51,7 +51,7 @@ impl Cli {
             Command::Sync(sync) => sync.execute(&mut client).await,
             Command::Init(init) => init.execute(),
             Command::Query(query) => query.execute(&mut client).await,
-            Command::List(list) => list.execute(&mut client),
+            Command::List(list) => list.execute(&client),
         }
     }
 }

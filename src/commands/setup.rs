@@ -1,44 +1,21 @@
 use core::panic;
-use std::{
-    fs::{File, OpenOptions},
-    io::{Read, Write},
-    path::Path,
-    time::Duration,
-};
+use std::time::Duration;
 
 use clap::Parser;
 use miden_client::{
-    accounts::{Account, AccountId, AccountStorageType, AccountTemplate},
+    accounts::{Account, AccountId, AccountStorageMode, AccountTemplate},
     assets::{FungibleAsset, TokenSymbol},
-    auth::TransactionAuthenticator,
     crypto::FeltRng,
     notes::{NoteTag, NoteType},
-    rpc::NodeRpcClient,
-    store::Store,
-    transactions::{build_swap_tag, request::TransactionRequest},
+    transactions::{build_swap_tag, TransactionRequest},
     Client, Word,
 };
-use serde::{Deserialize, Serialize};
 use tokio::time::sleep;
 
 use crate::{
-    constants::{CLOB_DATA_FILE_PATH, DB_FILE_PATH},
-    note::create_partial_swap_notes_transaction_request,
+    constants::DB_FILE_PATH, note::create_partial_swap_notes_transaction_request,
     utils::clear_notes_tables,
 };
-
-// CLOB
-// ================================================================================================
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Clob {
-    pub faucet1: AccountId,
-    pub faucet2: AccountId,
-    pub admin: AccountId,
-    pub user: AccountId,
-    pub swap_1_2_tag: NoteTag,
-    pub swap_2_1_tag: NoteTag,
-}
 
 // Setup COMMAND
 // ================================================================================================
@@ -48,10 +25,7 @@ pub struct Clob {
 pub struct SetupCmd {}
 
 impl SetupCmd {
-    pub async fn execute<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(
-        &self,
-        client: &mut Client<N, R, S, A>,
-    ) -> Result<(), String> {
+    pub async fn execute(&self, client: &mut Client<impl FeltRng>) -> Result<(), String> {
         // Sync rollup state
         client.sync_state().await.unwrap();
 
@@ -111,33 +85,19 @@ impl SetupCmd {
             swap_2_1_tag,
         );
 
-        Self::export_clob_data(
-            faucet1.id(),
-            faucet2.id(),
-            admin.id(),
-            user.id(),
-            swap_1_2_tag,
-            swap_2_1_tag,
-        )
-        .unwrap();
-
         println!("CLOB successfully setup.");
+
         Ok(())
     }
 
-    async fn create_partial_swap_notes<
-        N: NodeRpcClient,
-        R: FeltRng,
-        S: Store,
-        A: TransactionAuthenticator,
-    >(
+    async fn create_partial_swap_notes(
         num_notes: u8,
         faucet1: AccountId,
         total_asset_offering: u64,
         faucet2: AccountId,
         total_asset_requesting: u64,
         user: AccountId,
-        client: &mut Client<N, R, S, A>,
+        client: &mut Client<impl FeltRng>,
     ) {
         let transaction_request = create_partial_swap_notes_transaction_request(
             num_notes,
@@ -153,13 +113,13 @@ impl SetupCmd {
         client.submit_transaction(tx_result).await.unwrap();
     }
 
-    async fn fund_wallet<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(
+    async fn fund_wallet(
         faucet1: AccountId,
         asset_a_amount: u64,
         faucet2: AccountId,
         asset_b_amount: u64,
         user: AccountId,
-        client: &mut Client<N, R, S, A>,
+        client: &mut Client<impl FeltRng>,
     ) {
         // Setup mint
         let note_type = NoteType::Public;
@@ -196,26 +156,24 @@ impl SetupCmd {
         client.submit_transaction(tx_result).await.unwrap();
     }
 
-    fn create_wallet<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(
-        client: &mut Client<N, R, S, A>,
-    ) -> (Account, Word) {
+    fn create_wallet(client: &mut Client<impl FeltRng>) -> (Account, Word) {
         let wallet_template = AccountTemplate::BasicWallet {
             mutable_code: false,
-            storage_type: AccountStorageType::OnChain,
+            storage_mode: AccountStorageMode::Public,
         };
         client.new_account(wallet_template).unwrap()
     }
 
-    fn create_faucet<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(
+    fn create_faucet(
         max_supply: u64,
         token_symbol: &str,
-        client: &mut Client<N, R, S, A>,
+        client: &mut Client<impl FeltRng>,
     ) -> (Account, Word) {
         let faucet_template = AccountTemplate::FungibleFaucet {
             token_symbol: TokenSymbol::new(token_symbol).unwrap(),
             decimals: 10,
             max_supply,
-            storage_type: AccountStorageType::OnChain,
+            storage_mode: AccountStorageMode::Public,
         };
         client.new_account(faucet_template).unwrap()
     }
@@ -234,54 +192,5 @@ impl SetupCmd {
         println!("swap_2_1_tag: {}", swap_2_1_tag);
         println!("Admin: {}", admin);
         println!("User: {}", user);
-    }
-
-    fn export_clob_data(
-        faucet1: AccountId,
-        faucet2: AccountId,
-        admin: AccountId,
-        user: AccountId,
-        swap_1_2_tag: NoteTag,
-        swap_2_1_tag: NoteTag,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let clob = Clob {
-            faucet1,
-            faucet2,
-            admin,
-            user,
-            swap_1_2_tag,
-            swap_2_1_tag,
-        };
-
-        // Serialize the struct to a TOML string
-        let toml_string = toml::to_string(&clob)?;
-
-        // Write the TOML string to a file
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(CLOB_DATA_FILE_PATH)?;
-
-        file.write_all(toml_string.as_bytes())?;
-
-        Ok(())
-    }
-
-    pub fn import_clob_data() -> Result<Clob, Box<dyn std::error::Error>> {
-        // Check if file exists
-        if !Path::new(CLOB_DATA_FILE_PATH).exists() {
-            return Err(format!("CLOB data file not found: {}", CLOB_DATA_FILE_PATH).into());
-        }
-
-        // Read the TOML file contents
-        let mut file = File::open(CLOB_DATA_FILE_PATH)?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)?;
-
-        // Deserialize the TOML string into a Clob struct
-        let clob: Clob = toml::from_str(&contents)?;
-
-        Ok(clob)
     }
 }

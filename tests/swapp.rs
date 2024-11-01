@@ -7,18 +7,16 @@ use miden_client::{
     notes::{
         NoteAssets, NoteExecutionHint, NoteExecutionMode, NoteId, NoteMetadata, NoteTag, NoteType,
     },
-    Felt, Word, ZERO,
+    Felt, ZERO,
 };
 use miden_lib::transaction::TransactionKernel;
 use miden_objects::{
     notes::NoteHeader,
-    testing::{account::AccountBuilder, account_code::DEFAULT_AUTH_SCRIPT},
+    testing::account_code::DEFAULT_AUTH_SCRIPT,
     transaction::{TransactionArgs, TransactionScript},
 };
 use miden_order_book::note::create_swapp_note;
 use miden_tx::testing::mock_chain::{Auth, MockChain};
-use rand::SeedableRng;
-use rand_chacha::ChaCha20Rng;
 
 #[test]
 fn test_swapp_script_full_swap() {
@@ -34,23 +32,8 @@ fn test_swapp_script_full_swap() {
     let requested_asset = faucet_2.mint(10);
 
     // create sender and target account
-    let code: String = format!(
-        "
-        export.::miden::contracts::wallets::basic::receive_asset
-        export.::miden::contracts::wallets::basic::create_note  
-        export.::miden::contracts::wallets::basic::move_asset_to_note
-        export.::miden::contracts::auth::basic::auth_tx_rpo_falcon512
-    "
-    );
-    let sender_account_builder = AccountBuilder::new(ChaCha20Rng::from_entropy())
-        .code(code.clone())
-        .add_asset(offered_asset);
-    let sender_account = chain.add_from_account_builder(Auth::NoAuth, sender_account_builder);
-
-    let target_account_builder = AccountBuilder::new(ChaCha20Rng::from_entropy())
-        .code(code)
-        .add_asset(requested_asset);
-    let target_account = chain.add_from_account_builder(Auth::NoAuth, target_account_builder);
+    let sender_account = chain.add_new_wallet(Auth::BasicAuth, vec![offered_asset]);
+    let target_account = chain.add_existing_wallet(Auth::BasicAuth, vec![requested_asset]);
 
     let note = create_swapp_note(
         sender_account.id(),
