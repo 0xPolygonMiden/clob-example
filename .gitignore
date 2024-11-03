@@ -6,6 +6,7 @@ accounts/
 store.sqlite3
 *.mac
 *.toml
+*.txt
 
 # Mac files
 .DS_Store
