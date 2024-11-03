@@ -13,7 +13,6 @@ use miden_client::{
 };
 use miden_tx::{LocalTransactionProver, ProvingOptions};
 use rand::Rng;
-use rusqlite::{Connection, Result};
 use std::sync::Arc;
 
 use crate::order::Order;
@@ -70,8 +69,8 @@ pub fn get_notes_by_tag(client: &Client<impl FeltRng>, tag: NoteTag) -> Vec<Inpu
 pub fn get_assets_from_swap_note(note: &InputNoteRecord) -> (Asset, Asset) {
     let source_asset =
         Asset::Fungible(note.assets().iter().collect::<Vec<&Asset>>()[0].unwrap_fungible());
-    let target_faucet = AccountId::try_from(note.details().inputs().values()[3]).unwrap();
-    let target_amount = note.details().inputs().values()[0].as_int();
+    let target_faucet = AccountId::try_from(note.details().inputs().values()[7]).unwrap();
+    let target_amount = note.details().inputs().values()[4].as_int();
     let target_asset = Asset::Fungible(FungibleAsset::new(target_faucet, target_amount).unwrap());
     (source_asset, target_asset)
 }
@@ -102,7 +101,7 @@ pub fn print_order_table(title: &str, orders: &[Order]) {
         ));
     }
 
-    table.push("+--------------------------------------------------------------------+--------------------+------------------+--------------------+------------------+----------+".to_string());
+    table.push("+--------------------------------------------------------------------+--------------------+------------------+--------------------+------------------+----------+\n".to_string());
 
     // Print title
     println!("{}\n", title);
@@ -138,21 +137,4 @@ pub fn print_balance_update(orders: &[Order]) {
     println!("  Faucet ID: {}", source_faucet_id);
     println!("  Amount: {}", total_source_asset);
     println!("------------------------");
-}
-
-pub fn clear_notes_tables(db_path: &str) -> Result<()> {
-    // Open a connection to the SQLite database
-    let conn = Connection::open(db_path)?;
-
-    // Execute the DELETE commands
-    conn.execute_batch(
-        "
-        DELETE FROM output_notes;
-        DELETE FROM input_notes;
-    ",
-    )?;
-
-    println!("Both output_notes and input_notes tables have been cleared.");
-
-    Ok(())
 }
