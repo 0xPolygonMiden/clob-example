@@ -38,7 +38,8 @@ impl Order {
     }
 }
 
-// Conversion Into
+// Conversions
+/////////////////////////////////////////////////
 
 impl From<InputNoteRecord> for Order {
     fn from(value: InputNoteRecord) -> Self {
@@ -56,44 +57,25 @@ impl From<InputNoteRecord> for Order {
 /////////////////////////////////////////////////
 
 pub fn match_orders(incoming_order: Order, existing_order: Order) -> Result<Order, OrderError> {
-    // Check that the assets are inversed
-    if existing_order.source_asset.faucet_id() != incoming_order.target_asset.faucet_id()
-        || existing_order.target_asset.faucet_id() != incoming_order.source_asset.faucet_id()
+    // Orders match if:
+    // - They have inversed source and target assets
+    // - Exisiting order price is lower than incoming order price
+
+    // assets do not match
+    if !(existing_order.source_asset.faucet_id() == incoming_order.target_asset.faucet_id()
+        && existing_order.target_asset.faucet_id() == incoming_order.source_asset.faucet_id())
     {
         return Err(OrderError::AssetsNotMatching);
     }
 
-    // Extract the amounts from the orders
-    let existing_source_amount = existing_order.source_asset.unwrap_fungible().amount() as f64;
-    let existing_target_amount = existing_order.target_asset.unwrap_fungible().amount() as f64;
-    let incoming_source_amount = incoming_order.source_asset.unwrap_fungible().amount() as f64;
-    let incoming_target_amount = incoming_order.target_asset.unwrap_fungible().amount() as f64;
-
-    // Calculate the price of the existing order (price per unit of source asset)
-    let existing_price = existing_target_amount / existing_source_amount;
-
-    // Calculate the price of the incoming order
-    let incoming_price = incoming_target_amount / incoming_source_amount;
-
-    // Log the prices for debugging
-    println!(
-        "Existing order price: {}, Incoming order price: {}",
-        existing_price, incoming_price
-    );
-
-    // Check if the existing order's price is equal to or lower than the incoming order's price
-    if existing_price > incoming_price {
-        panic!("price too high");
+    // existing order price is too high
+    if existing_order.price() > incoming_order.price() {
+        return Err(OrderError::PriceTooHigh(
+            incoming_order.price() as u64,
+            existing_order.price() as u64,
+        ));
     }
 
-    // Determine the amounts that can be traded (allow partial fills)
-    let trade_source_amount = existing_source_amount.min(incoming_target_amount);
-    let trade_target_amount = existing_target_amount.min(incoming_source_amount);
-
-    // Ensure trade amounts are positive
-    if trade_source_amount <= 0.0 || trade_target_amount <= 0.0 {
-        panic!("must be positive");
-    }
     Ok(existing_order)
 }
 
@@ -149,31 +131,31 @@ mod tests {
 
         // existing orders
 
-        // Perfect match
+        // Full swap
         let order1 = Order::new(Some(note_id), target_asset, source_asset);
 
         // Assets do not match
         let order2 = Order::new(Some(note_id), source_asset, source_asset);
 
-        // Not enough target assets
-        let new_target_amount = 19;
-        let new_target_asset =
-            Asset::Fungible(FungibleAsset::new(target_faucet_id, new_target_amount).unwrap());
-        let order3 = Order::new(Some(note_id), new_target_asset, source_asset);
-
-        // Too many requested assets
-        let new_source_amount = 11;
+        // Price is too high
+        let new_source_amount = 30;
+        let new_target_amount = 10;
         let new_source_asset =
             Asset::Fungible(FungibleAsset::new(source_faucet_id, new_source_amount).unwrap());
-        let order4 = Order::new(Some(note_id), target_asset, new_source_asset);
-
-        // Acceptable match
-        let new_target_amount = 200;
         let new_target_asset =
             Asset::Fungible(FungibleAsset::new(target_faucet_id, new_target_amount).unwrap());
-        let order5 = Order::new(Some(note_id), new_target_asset, source_asset);
+        let order3 = Order::new(Some(note_id), new_target_asset, new_source_asset);
 
-        let orders = vec![order1, order2, order3, order4, order5];
+        // Partial swap
+        let new_source_amount = 10;
+        let new_target_amount = 5;
+        let new_source_asset =
+            Asset::Fungible(FungibleAsset::new(source_faucet_id, new_source_amount).unwrap());
+        let new_target_asset =
+            Asset::Fungible(FungibleAsset::new(target_faucet_id, new_target_amount).unwrap());
+        let order4 = Order::new(Some(note_id), new_target_asset, new_source_asset);
+
+        let orders = vec![order1, order2, order3, order4];
 
         (order, orders)
     }
@@ -184,9 +166,11 @@ mod tests {
         let expected_results = [
             Ok(existing_orders[0]),
             Err(OrderError::AssetsNotMatching),
-            Err(OrderError::TooFewSourceAssets),
-            Err(OrderError::TooManyTargetAssets),
-            Ok(existing_orders[4]),
+            Err(OrderError::PriceTooHigh(
+                incoming_order.price() as u64,
+                existing_orders[2].price() as u64,
+            )),
+            Ok(existing_orders[3]),
         ];
 
         for (existing_order, expected_result) in existing_orders.into_iter().zip(expected_results) {

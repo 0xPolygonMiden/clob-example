@@ -98,11 +98,7 @@ impl OrderCmd {
             }
         }
 
-        // The goal is to find the best combination of orders that could fill the incoming order
-        // - Maximize the amount of target asset that the incoming order can get
-        // - Make sure that all swaps can be successfully filled
         let mut remaining_source = incoming_order.source_asset().unwrap_fungible().amount();
-        let target = incoming_order.target_asset().unwrap_fungible().amount();
 
         let mut final_orders = Vec::new();
         for order in matching_orders {
@@ -112,20 +108,8 @@ impl OrderCmd {
                 break;
             }
 
-            if order_amount <= remaining_source {
-                remaining_source = remaining_source.saturating_sub(order_amount);
-                final_orders.push(order);
-            }
-        }
-
-        let final_target_amount: u64 = final_orders
-            .iter()
-            .map(|order| order.source_asset().unwrap_fungible().amount())
-            .sum();
-
-        // We have not hit the required target amount
-        if final_target_amount < target {
-            return Err(OrderError::FailedFill(incoming_order));
+            remaining_source = remaining_source.saturating_sub(order_amount);
+            final_orders.push(order)
         }
 
         Ok(final_orders)
