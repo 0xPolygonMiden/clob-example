@@ -1316,6 +1316,7 @@ dependencies = [
  "miden-tx",
  "rand",
  "rand_chacha",
+ "rusqlite",
  "serde",
  "tokio",
  "toml",

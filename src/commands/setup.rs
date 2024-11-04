@@ -12,7 +12,10 @@ use miden_client::{
 };
 use tokio::time::sleep;
 
-use crate::note::create_partial_swap_notes_transaction_request;
+use crate::{
+    constants::DB_FILE_PATH, note::create_partial_swap_notes_transaction_request,
+    utils::clear_notes_tables,
+};
 
 // Setup COMMAND
 // ================================================================================================
@@ -69,6 +72,9 @@ impl SetupCmd {
         if swap_1_2_tag == swap_2_1_tag {
             panic!("Both asset tags should not be similar.");
         }
+
+        // Sanitize client db
+        clear_notes_tables(DB_FILE_PATH);
 
         Self::print_clob_data(
             faucet1.id(),

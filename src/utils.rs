@@ -13,6 +13,7 @@ use miden_client::{
 };
 use miden_tx::{LocalTransactionProver, ProvingOptions};
 use rand::Rng;
+use rusqlite::Connection;
 use std::sync::Arc;
 
 use crate::order::Order;
@@ -137,4 +138,20 @@ pub fn print_balance_update(orders: &[Order]) {
     println!("  Faucet ID: {}", source_faucet_id);
     println!("  Amount: {}", total_source_asset);
     println!("------------------------");
+}
+
+pub fn clear_notes_tables(db_path: &str) -> () {
+    // Open a connection to the SQLite database
+    let conn = Connection::open(db_path).unwrap();
+
+    // Execute the DELETE commands
+    conn.execute_batch(
+        "
+        DELETE FROM output_notes;
+        DELETE FROM input_notes;
+    ",
+    )
+    .unwrap();
+
+    println!("Both output_notes and input_notes tables have been cleared.");
 }
