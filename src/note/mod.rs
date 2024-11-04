@@ -25,7 +25,7 @@ pub fn create_partial_swap_notes_transaction_request(
     // Setup note args
     let mut own_output_notes = vec![];
 
-    let note_type = NoteType::Private;
+    let note_type = NoteType::Public;
     let offering_distribution =
         generate_random_distribution(num_notes as usize, total_asset_offering);
     let requesting_distribution =
