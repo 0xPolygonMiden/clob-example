@@ -9,6 +9,7 @@ use miden_client::{
         sqlite_store::{config::SqliteStoreConfig, SqliteStore},
         InputNoteRecord, NoteFilter, StoreAuthenticator,
     },
+    transactions::NoteArgs,
     Client, Felt,
 };
 use miden_tx::{LocalTransactionProver, ProvingOptions};
@@ -51,7 +52,7 @@ pub fn setup_client() -> Client<impl FeltRng> {
 }
 
 pub fn get_notes_by_tag(client: &Client<impl FeltRng>, tag: NoteTag) -> Vec<InputNoteRecord> {
-    let notes = client.get_input_notes(NoteFilter::All).unwrap();
+    let notes = client.get_input_notes(NoteFilter::Unspent).unwrap();
 
     notes
         .into_iter()
@@ -113,7 +114,7 @@ pub fn print_order_table(title: &str, orders: &[Order]) {
     }
 }
 
-pub fn print_balance_update(orders: &[Order]) {
+pub fn print_balance_update(orders: &[Order], args: &[NoteArgs]) {
     if orders.is_empty() {
         println!("No orders to process. Your balance will not change.");
         return;
@@ -124,11 +125,12 @@ pub fn print_balance_update(orders: &[Order]) {
     let source_faucet_id = orders[0].target_asset().faucet_id();
     let target_faucet_id = orders[0].source_asset().faucet_id();
 
-    for order in orders {
-        total_source_asset += order.target_asset().unwrap_fungible().amount();
+    for (i, order) in orders.into_iter().enumerate() {
+        total_source_asset += args[i][0].as_int();
         total_target_asset += order.source_asset().unwrap_fungible().amount();
     }
 
+    println!("Args: {:?}", args);
     println!("Balance Update Preview:");
     println!("------------------------");
     println!("Assets you will receive:");
@@ -140,7 +142,7 @@ pub fn print_balance_update(orders: &[Order]) {
     println!("------------------------");
 }
 
-pub fn clear_notes_tables(db_path: &str) -> () {
+pub fn clear_notes_tables(db_path: &str) {
     // Open a connection to the SQLite database
     let conn = Connection::open(db_path).unwrap();
 

@@ -8,6 +8,7 @@ use.miden::contracts::wallets::basic->wallet
 # =================================================================================================
 
 const.REQUESTED_ASSET_PTR=1
+const.PUBLIC_NOTE=1
 const.PRIVATE_NOTE=2
 const.OFFERED_ASSET_PTR=3
 const.FILL_AMOUNT_PTR=4
@@ -189,8 +190,8 @@ proc.create_swapp_note
     exec.tx::build_recipient_hash
     # => [SWAPP_RECIPIENT]
 
-    # build swapp note inputs
-    padw mem_loadw.2 drop drop swap push.0 swap push.PRIVATE_NOTE movdn.2
+    # build swapp note
+    padw mem_loadw.2 drop drop swap push.0 swap push.PUBLIC_NOTE movdn.2
     padw mem_loadw.OFFERED_ASSET_PTR
     # => [ASSET, tag, aux, note_type, execution_hint, SWAPP_RECIPIENT]
 

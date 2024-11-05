@@ -5,13 +5,14 @@ use miden_client::{
     assets::{Asset, FungibleAsset},
     crypto::FeltRng,
     notes::{NoteId, NoteType},
-    transactions::{build_swap_tag, SwapTransactionData, TransactionRequest},
-    Client,
+    transactions::{build_swap_tag, NoteArgs, SwapTransactionData, TransactionRequest},
+    Client, Felt, ZERO,
 };
 
 use clap::Parser;
 
 use crate::{
+    commands::sync::SyncCmd,
     errors::OrderError,
     order::{match_orders, sort_orders, Order},
     utils::{get_notes_by_tag, print_balance_update, print_order_table},
@@ -61,14 +62,9 @@ impl OrderCmd {
         let notes = get_notes_by_tag(client, tag);
         let existing_orders: Vec<Order> = notes.into_iter().map(Order::from).collect();
 
-        assert!(
-            !existing_orders.is_empty(),
-            "There are no relevant orders available."
-        );
-
         // fill order
         match Self::fill_order(incoming_order, existing_orders) {
-            Ok(orders) => Self::fill_success(orders, account_id, client)
+            Ok((orders, args)) => Self::fill_success(orders, args, account_id, client)
                 .await
                 .map_err(|e| format!("Failed in fill success: {}", e))?,
             Err(err) => match err {
@@ -85,7 +81,7 @@ impl OrderCmd {
     pub fn fill_order(
         incoming_order: Order,
         existing_orders: Vec<Order>,
-    ) -> Result<Vec<Order>, OrderError> {
+    ) -> Result<(Vec<Order>, Vec<NoteArgs>), OrderError> {
         // Sort existing orders
         let sorted_orders = sort_orders(existing_orders);
 
@@ -101,6 +97,7 @@ impl OrderCmd {
         let mut remaining_source = incoming_order.source_asset().unwrap_fungible().amount();
 
         let mut final_orders = Vec::new();
+        let mut args = Vec::new();
         for order in matching_orders {
             let order_amount = order.target_asset().unwrap_fungible().amount();
 
@@ -108,23 +105,39 @@ impl OrderCmd {
                 break;
             }
 
-            remaining_source = remaining_source.saturating_sub(order_amount);
-            final_orders.push(order)
+            if order_amount <= remaining_source {
+                remaining_source = remaining_source.saturating_sub(order_amount);
+                args.push([Felt::new(order_amount), ZERO, ZERO, ZERO]);
+                final_orders.push(order)
+            } else {
+                args.push([Felt::new(remaining_source), ZERO, ZERO, ZERO]);
+                final_orders.push(order);
+                break;
+            }
         }
 
-        Ok(final_orders)
+        if final_orders.len() == 0 {
+            return Err(OrderError::FailedFill(incoming_order));
+        }
+
+        Ok((final_orders, args))
     }
 
     async fn fill_success(
         orders: Vec<Order>,
+        args: Vec<NoteArgs>,
         account_id: AccountId,
         client: &mut Client<impl FeltRng>,
     ) -> Result<(), OrderError> {
+        // sync
+        let sync = SyncCmd {};
+        sync.execute(client).await.unwrap();
+
         // print final orders
         print_order_table("Final orders:", &orders);
 
         // print user balance update
-        print_balance_update(&orders);
+        print_balance_update(&orders, &args);
 
         // Prompt user for confirmation
         print!("Do you want to proceed with the execution? [Y/n]: ");
@@ -144,13 +157,19 @@ impl OrderCmd {
         }
 
         // Proceed with execution
-        let final_order_ids = orders
+        let final_order_ids_and_args = orders
             .into_iter()
-            .map(|order| order.id().ok_or(OrderError::MissingId))
-            .collect::<Result<Vec<NoteId>, OrderError>>()?;
-
+            .enumerate()
+            .map(|(i, order)| {
+                order
+                    .id()
+                    .ok_or(OrderError::MissingId)
+                    .map(|id| (id, Some(args[i])))
+            })
+            .collect::<Result<Vec<(NoteId, Option<NoteArgs>)>, OrderError>>()?;
         // Create transaction
-        let transaction_request = TransactionRequest::consume_notes(final_order_ids);
+        let transaction_request =
+            TransactionRequest::new().with_authenticated_input_notes(final_order_ids_and_args);
         let transaction = client
             .new_transaction(account_id, transaction_request)
             .map_err(|e| {
