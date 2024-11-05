@@ -191,7 +191,7 @@ proc.create_swapp_note
     # => [SWAPP_RECIPIENT]
 
     # build swapp note
-    padw mem_loadw.2 drop drop swap push.0 swap push.PUBLIC_NOTE movdn.2
+    padw mem_loadw.2 drop drop swap push.0 swap push.PRIVATE_NOTE movdn.2
     padw mem_loadw.OFFERED_ASSET_PTR
     # => [ASSET, tag, aux, note_type, execution_hint, SWAPP_RECIPIENT]
 

@@ -1,5 +1,7 @@
 use crate::constants::{ACCOUNTS_DIR, CLOB_DATA_FILE_PATH, DB_FILE_PATH};
 use clap::Parser;
+use colored::Colorize;
+use log::warn;
 use std::{
     fs::{self},
     path::Path,
@@ -14,6 +16,7 @@ impl InitCmd {
         self.remove_file_if_exists(DB_FILE_PATH)?;
         self.remove_file_if_exists(CLOB_DATA_FILE_PATH)?;
         self.remove_folder_if_exists(ACCOUNTS_DIR)?;
+        self.print_cool_start_message();
         println!("State successfully initialized.");
         Ok(())
     }
@@ -34,5 +37,21 @@ impl InitCmd {
                 .map_err(|e| format!("Failed to remove folder {}: {}", folder_path, e))?;
         }
         Ok(())
+    }
+
+    fn print_cool_start_message(&self) {
+        println!(
+            "{}",
+            r#"
+ __  __ ___ ___  ___  _  _    ___  ___  ___  ___  ___    ___   ___   ___  _  __
+|  \/  |_ _|   \| __|| \| |  / _ \| _ \|   \| __|| _ \  | _ ) / _ \ / _ \| |/ /
+| |\/| || || |) | _| | .` | | (_) |   /| |) | _| |   /  | _ \| (_) | (_) | ' <
+|_|  |_|___|___/|___||_|\_|  \___/|_|_\|___/|___||_|_\  |___/ \___/ \___/|_|\_\
+
+"#
+            .bright_cyan()
+        );
+        println!("{}", "MIDEN ORDER BOOK".bold().green());
+        warn!("Fasten your seatbelts! We're about to take off into the world of decentralized finance!");
     }
 }
