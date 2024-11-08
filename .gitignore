@@ -1,4 +1,4 @@
-# Rust
+# rust
 target/
 
 # misc files
@@ -6,5 +6,5 @@ accounts/
 store.sqlite3
 *.mac
 
-# Mac files
+# macos files
 .DS_Store
