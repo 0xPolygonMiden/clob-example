@@ -1,14 +1,12 @@
+mod commands;
+
 use clap::Parser;
-
-use crate::{
-    commands::{
-        init::InitCmd, list::ListCmd, order::OrderCmd, query::QueryCmd, setup::SetupCmd,
-        sync::SyncCmd,
-    },
-    utils::setup_client,
+use commands::{
+    init::InitCmd, list::ListCmd, order::OrderCmd, query::QueryCmd, setup::SetupCmd, sync::SyncCmd,
 };
+use miden_order_book::utils::setup_client;
 
-/// CLI actions
+/// Commands
 #[derive(Debug, Parser)]
 pub enum Command {
     Init(InitCmd),
@@ -19,10 +17,10 @@ pub enum Command {
     Query(QueryCmd),
 }
 
-/// Root CLI struct
+/// CLI
 #[derive(Parser, Debug)]
 #[clap(
-    name = "Miden-order-book",
+    name = "miden-order-book-cli",
     about = "Miden order book cli",
     version,
     rename_all = "kebab-case"

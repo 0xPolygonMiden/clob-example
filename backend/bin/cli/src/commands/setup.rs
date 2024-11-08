@@ -1,5 +1,5 @@
 use core::panic;
-use std::time::Duration;
+use std::{thread::sleep, time::Duration};
 
 use clap::Parser;
 use miden_client::{
@@ -10,9 +10,8 @@ use miden_client::{
     transactions::TransactionRequest,
     Client, Word,
 };
-use tokio::time::sleep;
 
-use crate::{
+use miden_order_book::{
     constants::DB_FILE_PATH, note::create_partial_swap_notes_transaction_request,
     utils::clear_notes_tables,
 };
@@ -154,7 +153,7 @@ impl SetupCmd {
         client.submit_transaction(tx_result).await.unwrap();
 
         // Sync rollup state
-        sleep(Duration::from_secs(20)).await;
+        sleep(Duration::from_secs(20));
         client.sync_state().await.unwrap();
 
         // Fund receiving wallet

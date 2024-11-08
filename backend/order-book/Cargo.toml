@@ -1,0 +1,27 @@
+[package]
+name = "miden-order-book"
+version = "0.1.0"
+description = "Miden order book library"
+readme = "README.md"
+categories = ["order book"]
+keywords = ["miden", "order-book", "library"]
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "miden_order_book"
+path = "src/lib.rs"
+
+[dependencies]
+env_logger = { workspace = true }
+log = { workspace = true }
+miden-client = { workspace = true }
+miden-lib = { workspace = true }
+miden-objects = { workspace = true }
+miden-tx = { workspace = true }
+rand = { version = "0.8.5" }
+rusqlite = { version = "0.32" }
+tokio = { workspace = true }

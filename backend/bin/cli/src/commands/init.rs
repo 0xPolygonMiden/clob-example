@@ -1,7 +1,7 @@
-use crate::constants::{ACCOUNTS_DIR, CLOB_DATA_FILE_PATH, DB_FILE_PATH};
 use clap::Parser;
 use colored::Colorize;
 use log::warn;
+use miden_order_book::constants::{ACCOUNTS_DIR, CLOB_DATA_FILE_PATH, DB_FILE_PATH};
 use std::{
     fs::{self},
     path::Path,

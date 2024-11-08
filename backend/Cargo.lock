@@ -1355,8 +1355,6 @@ dependencies = [
 name = "miden-order-book"
 version = "0.1.0"
 dependencies = [
- "clap",
- "colored",
  "env_logger",
  "log",
  "miden-client",
@@ -1364,14 +1362,30 @@ dependencies = [
  "miden-objects",
  "miden-tx",
  "rand",
- "rand_chacha",
  "rusqlite",
- "serde",
  "tokio",
- "toml",
- "tonic",
- "tracing",
- "tracing-subscriber",
+]
+
+[[package]]
+name = "miden-order-book-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "colored",
+ "env_logger",
+ "log",
+ "miden-client",
+ "miden-order-book",
+ "tokio",
+]
+
+[[package]]
+name = "miden-order-book-server"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "log",
+ "miden-order-book",
 ]
 
 [[package]]

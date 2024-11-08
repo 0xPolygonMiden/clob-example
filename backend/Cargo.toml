@@ -1,15 +1,23 @@
-[package]
-name = "miden-order-book"
-version = "0.1.0"
-edition = "2021"
+[workspace]
+resolver = "2"
 
-[dependencies]
-rusqlite = { version = "0.32" }
+members = [
+    "order-book",
+    "bin/cli",
+    "bin/server",
+]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+authors = ["miden contributors"]
+repository = "https://github.com/0xPolygonMiden/clob-example"
+
+[workspace.dependencies]
 log = { version = "0.4.22" }
-colored = { version = "2.1.0" }
-clap = { version = "4.5", features = ["derive"] }
-rand = { version = "0.8.5" }
 env_logger = { version = "0.11.5" }
+colored = { version = "2.1.0" }
 serde = { version = "1.0", features = ["derive"] }
 toml = { version = "0.8.9" }
 tokio = { version = "1.40.0", features = ["rt-multi-thread", "net", "macros"] }

@@ -1,9 +1,9 @@
-use crate::{
+use clap::Parser;
+use miden_client::{crypto::FeltRng, Client};
+use miden_order_book::{
     order::{sort_orders, Order},
     utils::{get_notes_by_tag, print_order_table},
 };
-use clap::Parser;
-use miden_client::{crypto::FeltRng, Client};
 
 #[derive(Debug, Clone, Parser)]
 #[clap(about = "List avaible order book orders")]

@@ -11,8 +11,9 @@ use miden_client::{
 
 use clap::Parser;
 
-use crate::{
-    commands::sync::SyncCmd,
+use crate::commands::sync::SyncCmd;
+
+use miden_order_book::{
     errors::OrderError,
     order::{match_orders, sort_orders, Order},
     utils::{get_notes_by_tag, print_balance_update, print_order_table},

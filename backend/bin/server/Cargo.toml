@@ -1,0 +1,21 @@
+[package]
+name = "miden-order-book-server"
+version = "0.1.0"
+description = "Miden order book server application"
+readme = "README.md"
+categories = ["server"]
+keywords = ["miden", "order-book", "server"]
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "miden_order_book_server"
+path = "src/main.rs"
+
+[dependencies]
+miden-order-book = { path = "../../order-book/" }
+env_logger = { workspace = true }
+log = { workspace = true }

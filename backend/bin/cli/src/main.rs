@@ -1,5 +1,5 @@
 use clap::Parser;
-use miden_order_book::cli::Cli;
+use miden_order_book_cli::Cli;
 
 #[tokio::main]
 async fn main() -> Result<(), String> {
