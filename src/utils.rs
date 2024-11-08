@@ -22,9 +22,9 @@ use crate::order::Order;
 // Client Setup
 // ================================================================================================
 
-pub fn setup_client() -> Client<impl FeltRng> {
+pub async fn setup_client() -> Client<impl FeltRng> {
     let store_config = SqliteStoreConfig::default();
-    let store = SqliteStore::new(&store_config).unwrap();
+    let store = SqliteStore::new(&store_config).await.unwrap();
     let store = Arc::new(store);
 
     let mut rng = rand::thread_rng();
@@ -51,8 +51,8 @@ pub fn setup_client() -> Client<impl FeltRng> {
     )
 }
 
-pub fn get_notes_by_tag(client: &Client<impl FeltRng>, tag: NoteTag) -> Vec<InputNoteRecord> {
-    let notes = client.get_input_notes(NoteFilter::Unspent).unwrap();
+pub async fn get_notes_by_tag(client: &Client<impl FeltRng>, tag: NoteTag) -> Vec<InputNoteRecord> {
+    let notes = client.get_input_notes(NoteFilter::Unspent).await.unwrap();
 
     notes
         .into_iter()
@@ -130,7 +130,6 @@ pub fn print_balance_update(orders: &[Order], args: &[NoteArgs]) {
         total_target_asset += order.source_asset().unwrap_fungible().amount();
     }
 
-    println!("Args: {:?}", args);
     println!("Balance Update Preview:");
     println!("------------------------");
     println!("Assets you will receive:");

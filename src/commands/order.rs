@@ -4,8 +4,8 @@ use miden_client::{
     accounts::AccountId,
     assets::{Asset, FungibleAsset},
     crypto::FeltRng,
-    notes::{NoteId, NoteType},
-    transactions::{build_swap_tag, NoteArgs, SwapTransactionData, TransactionRequest},
+    notes::{build_swap_tag, NoteId, NoteType},
+    transactions::{NoteArgs, SwapTransactionData, TransactionRequest},
     Client, Felt, ZERO,
 };
 
@@ -45,7 +45,7 @@ impl OrderCmd {
         let target_faucet_id = AccountId::from_hex(self.target_faucet.as_str()).unwrap();
 
         // Check if user has balance
-        let (account, _) = client.get_account(account_id).unwrap();
+        let (account, _) = client.get_account(account_id).await.unwrap();
         if account.vault().get_balance(source_faucet_id).unwrap() < self.source_amount {
             panic!("User does not have enough assets to execute this order.");
         }
@@ -58,8 +58,8 @@ impl OrderCmd {
         let incoming_order = Order::new(None, source_asset, target_asset);
 
         // Get relevant notes
-        let tag = build_swap_tag(NoteType::Public, target_faucet_id, source_faucet_id).unwrap();
-        let notes = get_notes_by_tag(client, tag);
+        let tag = build_swap_tag(NoteType::Public, &target_asset, &source_asset).unwrap();
+        let notes = get_notes_by_tag(client, tag).await;
         let existing_orders: Vec<Order> = notes.into_iter().map(Order::from).collect();
 
         // fill order
@@ -172,6 +172,7 @@ impl OrderCmd {
             TransactionRequest::new().with_authenticated_input_notes(final_order_ids_and_args);
         let transaction = client
             .new_transaction(account_id, transaction_request)
+            .await
             .map_err(|e| {
                 OrderError::InternalError(format!("Failed to create transaction: {}", e))
             })?;
@@ -215,6 +216,7 @@ impl OrderCmd {
 
         let transaction = client
             .new_transaction(account_id, transaction_request)
+            .await
             .map_err(|e| {
                 OrderError::InternalError(format!("Failed to create transaction: {}", e))
             })?;

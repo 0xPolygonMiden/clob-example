@@ -3,10 +3,10 @@ use miden_client::{
     assets::{Asset, FungibleAsset},
     crypto::FeltRng,
     notes::{
-        Note, NoteAssets, NoteError, NoteExecutionHint, NoteExecutionMode, NoteInputs,
-        NoteMetadata, NoteRecipient, NoteScript, NoteTag, NoteType,
+        build_swap_tag, Note, NoteAssets, NoteError, NoteExecutionHint, NoteExecutionMode,
+        NoteInputs, NoteMetadata, NoteRecipient, NoteScript, NoteTag, NoteType,
     },
-    transactions::{build_swap_tag, TransactionRequest, TransactionRequestError},
+    transactions::{TransactionRequest, TransactionRequestError},
     Felt, Word,
 };
 use miden_lib::transaction::TransactionKernel;
@@ -87,11 +87,7 @@ pub fn create_swapp_note<R: FeltRng>(
     ])?;
 
     // build the tag for the SWAPP use case
-    let tag = build_swap_tag(
-        note_type,
-        offered_asset.faucet_id(),
-        requested_asset.faucet_id(),
-    )?;
+    let tag = build_swap_tag(note_type, &offered_asset, &requested_asset)?;
     let serial_num = rng.draw_word();
 
     // build the outgoing note

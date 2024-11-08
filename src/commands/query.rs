@@ -15,7 +15,10 @@ pub struct QueryCmd {
 impl QueryCmd {
     pub async fn execute(&self, client: &mut Client<impl FeltRng>) -> Result<(), String> {
         for tag in self.tags.clone() {
-            client.add_note_tag(tag.into()).map_err(|e| e.to_string())?;
+            client
+                .add_note_tag(tag.into())
+                .await
+                .map_err(|e| e.to_string())?;
         }
 
         // Sync rollup state

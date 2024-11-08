@@ -41,7 +41,7 @@ pub struct Cli {
 impl Cli {
     pub async fn execute(&self) -> Result<(), String> {
         // Setup client
-        let mut client = setup_client();
+        let mut client = setup_client().await;
 
         // Execute Cli commands
         match &self.action {
@@ -51,7 +51,7 @@ impl Cli {
             Command::Sync(sync) => sync.execute(&mut client).await,
             Command::Init(init) => init.execute(),
             Command::Query(query) => query.execute(&mut client).await,
-            Command::List(list) => list.execute(&client),
+            Command::List(list) => list.execute(&client).await,
         }
     }
 }

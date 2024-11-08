@@ -4,10 +4,10 @@ use std::time::Duration;
 use clap::Parser;
 use miden_client::{
     accounts::{Account, AccountId, AccountStorageMode, AccountTemplate},
-    assets::{FungibleAsset, TokenSymbol},
+    assets::{Asset, FungibleAsset, TokenSymbol},
     crypto::FeltRng,
-    notes::{NoteTag, NoteType},
-    transactions::{build_swap_tag, TransactionRequest},
+    notes::{build_swap_tag, NoteTag, NoteType},
+    transactions::TransactionRequest,
     Client, Word,
 };
 use tokio::time::sleep;
@@ -30,12 +30,12 @@ impl SetupCmd {
         client.sync_state().await.unwrap();
 
         // Create faucet accounts
-        let (faucet1, _) = Self::create_faucet(1000, "ASSETA", client);
-        let (faucet2, _) = Self::create_faucet(1000, "ASSETB", client);
+        let (faucet1, _) = Self::create_faucet(1000, "ASSETA", client).await;
+        let (faucet2, _) = Self::create_faucet(1000, "ASSETB", client).await;
 
         // Create user account
-        let (admin, _) = Self::create_wallet(client);
-        let (user, _) = Self::create_wallet(client);
+        let (admin, _) = Self::create_wallet(client).await;
+        let (user, _) = Self::create_wallet(client).await;
 
         // Mint assets for user
         Self::fund_wallet(faucet1.id(), 500, faucet2.id(), 500, admin.id(), client).await;
@@ -66,8 +66,10 @@ impl SetupCmd {
         .await;
 
         // Build note tags
-        let swap_1_2_tag = build_swap_tag(NoteType::Public, faucet1.id(), faucet2.id()).unwrap();
-        let swap_2_1_tag = build_swap_tag(NoteType::Public, faucet2.id(), faucet1.id()).unwrap();
+        let asset_1 = Asset::Fungible(FungibleAsset::new(faucet1.id(), 0).unwrap());
+        let asset_2 = Asset::Fungible(FungibleAsset::new(faucet2.id(), 0).unwrap());
+        let swap_1_2_tag = build_swap_tag(NoteType::Public, &asset_1, &asset_2).unwrap();
+        let swap_2_1_tag = build_swap_tag(NoteType::Public, &asset_2, &asset_1).unwrap();
 
         if swap_1_2_tag == swap_2_1_tag {
             panic!("Both asset tags should not be similar.");
@@ -109,7 +111,10 @@ impl SetupCmd {
             client.rng(),
         )
         .unwrap();
-        let tx_result = client.new_transaction(user, transaction_request).unwrap();
+        let tx_result = client
+            .new_transaction(user, transaction_request)
+            .await
+            .unwrap();
         client.submit_transaction(tx_result).await.unwrap();
     }
 
@@ -131,6 +136,7 @@ impl SetupCmd {
                 .unwrap();
         let tx_result = client
             .new_transaction(faucet1, transaction_request)
+            .await
             .unwrap();
         let asset_a_note_id = tx_result.relevant_notes()[0].id();
         client.submit_transaction(tx_result).await.unwrap();
@@ -142,6 +148,7 @@ impl SetupCmd {
                 .unwrap();
         let tx_result = client
             .new_transaction(faucet2, transaction_request)
+            .await
             .unwrap();
         let asset_b_note_id = tx_result.relevant_notes()[0].id();
         client.submit_transaction(tx_result).await.unwrap();
@@ -152,19 +159,19 @@ impl SetupCmd {
 
         // Fund receiving wallet
         let tx_request = TransactionRequest::consume_notes(vec![asset_a_note_id, asset_b_note_id]);
-        let tx_result = client.new_transaction(user, tx_request).unwrap();
+        let tx_result = client.new_transaction(user, tx_request).await.unwrap();
         client.submit_transaction(tx_result).await.unwrap();
     }
 
-    fn create_wallet(client: &mut Client<impl FeltRng>) -> (Account, Word) {
+    async fn create_wallet(client: &mut Client<impl FeltRng>) -> (Account, Word) {
         let wallet_template = AccountTemplate::BasicWallet {
             mutable_code: false,
             storage_mode: AccountStorageMode::Public,
         };
-        client.new_account(wallet_template).unwrap()
+        client.new_account(wallet_template).await.unwrap()
     }
 
-    fn create_faucet(
+    async fn create_faucet(
         max_supply: u64,
         token_symbol: &str,
         client: &mut Client<impl FeltRng>,
@@ -175,7 +182,7 @@ impl SetupCmd {
             max_supply,
             storage_mode: AccountStorageMode::Public,
         };
-        client.new_account(faucet_template).unwrap()
+        client.new_account(faucet_template).await.unwrap()
     }
 
     fn print_clob_data(

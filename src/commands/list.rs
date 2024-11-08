@@ -13,9 +13,9 @@ pub struct ListCmd {
 }
 
 impl ListCmd {
-    pub fn execute(&self, client: &Client<impl FeltRng>) -> Result<(), String> {
+    pub async fn execute(&self, client: &Client<impl FeltRng>) -> Result<(), String> {
         for tag in self.tags.clone() {
-            let notes = get_notes_by_tag(client, tag.into());
+            let notes = get_notes_by_tag(client, tag.into()).await;
             let orders: Vec<Order> = notes.into_iter().map(Order::from).collect();
 
             let sorted_orders = sort_orders(orders);
