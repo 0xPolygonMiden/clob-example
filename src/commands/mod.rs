@@ -1,4 +1,3 @@
-pub mod demo;
 pub mod init;
 pub mod list;
 pub mod order;
