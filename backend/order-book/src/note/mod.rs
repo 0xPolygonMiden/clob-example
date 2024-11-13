@@ -1,3 +1,5 @@
+use std::{hash::Hash, mem::replace};
+
 use miden_client::{
     accounts::AccountId,
     assets::{Asset, FungibleAsset},
@@ -12,6 +14,7 @@ use miden_client::{
 use miden_lib::transaction::TransactionKernel;
 use miden_objects::transaction::OutputNote;
 use rand::{seq::SliceRandom, Rng};
+use miden_client::ZERO;
 
 pub fn create_partial_swap_notes_transaction_request(
     num_notes: u8,
@@ -41,6 +44,7 @@ pub fn create_partial_swap_notes_transaction_request(
 
         let swapp_note = create_swapp_note(
             sender,
+            sender,
             offered_asset,
             requested_asset,
             note_type,
@@ -56,22 +60,27 @@ pub fn create_partial_swap_notes_transaction_request(
 
 pub fn create_swapp_note<R: FeltRng>(
     sender: AccountId,
+    payback_receiver: AccountId,
     offered_asset: Asset,
     requested_asset: Asset,
     note_type: NoteType,
     aux: Felt,
-    rng: &mut R,
+    _rng: &mut R,
 ) -> Result<Note, NoteError> {
-    let assembler = TransactionKernel::assembler();
-    let note_code = include_str!("scripts/SWAPP.masm");
-    let note_script = NoteScript::compile(note_code, assembler).unwrap();
+    // build the tag for the SWAPP use case
+    let swapp_tag = build_swap_tag(note_type, &offered_asset, &requested_asset)?;
 
-    let payback_serial_num = rng.draw_word();
-    let payback_recipient = build_p2id_recipient(sender, payback_serial_num)?;
+    let payback_serial_num = [Felt::new(4), Felt::new(3), Felt::new(2), Felt::new(1)];
+    let payback_recipient = build_p2id_recipient(payback_receiver, payback_serial_num)?;
 
     let payback_recipient_word: Word = payback_recipient.digest().into();
     let requested_asset_word: Word = requested_asset.into();
-    let payback_tag = NoteTag::from_account_id(sender, NoteExecutionMode::Local)?;
+    let payback_tag = NoteTag::from_account_id(payback_receiver, NoteExecutionMode::Local)?;
+
+    let assembler = TransactionKernel::assembler();
+    let note_code = include_str!("scripts/SWAPP.masm");
+    let note_script = NoteScript::compile(note_code, assembler).unwrap();
+    let note_script_hash = note_script.hash();
 
     let inputs = NoteInputs::new(vec![
         payback_recipient_word[0],
@@ -84,16 +93,20 @@ pub fn create_swapp_note<R: FeltRng>(
         requested_asset_word[3],
         payback_tag.inner().into(),
         NoteExecutionHint::always().into(),
-    ])?;
+        swapp_tag.inner().into(),
+        ZERO,
+        note_script_hash[0],
+        note_script_hash[1],
+        note_script_hash[2],
+        note_script_hash[3],
+    ]).unwrap();
 
-    // build the tag for the SWAPP use case
-    let tag = build_swap_tag(note_type, &offered_asset, &requested_asset)?;
-    let serial_num = rng.draw_word();
+    let serial_num = [Felt::new(1), Felt::new(2), Felt::new(3), Felt::new(4)];
 
     // build the outgoing note
-    let metadata = NoteMetadata::new(sender, note_type, tag, NoteExecutionHint::always(), aux)?;
+    let metadata = NoteMetadata::new(sender, note_type, swapp_tag, NoteExecutionHint::always(), aux)?;
     let assets = NoteAssets::new(vec![offered_asset])?;
-    let recipient = NoteRecipient::new(serial_num, note_script, inputs);
+    let recipient =  NoteRecipient::new(serial_num, note_script, inputs);
     let note = Note::new(assets, metadata, recipient);
 
     Ok(note)
