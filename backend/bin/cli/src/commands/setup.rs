@@ -42,7 +42,7 @@ impl SetupCmd {
 
         // Create 50 ASSETA/ASSETB swap notes
         Self::create_partial_swap_notes(
-            3,
+            50,
             faucet1.id(),
             500,
             faucet2.id(),
@@ -54,7 +54,7 @@ impl SetupCmd {
 
         // Create 50 ASSETB/ASSETA swap notes
         Self::create_partial_swap_notes(
-            3,
+            50,
             faucet2.id(),
             500,
             faucet1.id(),

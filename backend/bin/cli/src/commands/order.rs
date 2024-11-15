@@ -15,7 +15,7 @@ use crate::commands::sync::SyncCmd;
 
 use miden_order_book::{
     errors::OrderError,
-    note::create_swapp_note,
+    note::create_expected_partial_swapp_note,
     order::{match_orders, sort_orders, Order},
     utils::{get_notes_by_tag, print_balance_update, print_order_table},
 };
@@ -66,8 +66,8 @@ impl OrderCmd {
 
         // fill order
         match Self::fill_order(incoming_order, existing_orders) {
-            Ok((orders, new_partial_order, args)) => {
-                Self::fill_success(orders, new_partial_order, args, account_id, client)
+            Ok((orders, partial_fill_amount, args)) => {
+                Self::fill_success(orders, partial_fill_amount, args, account_id, client)
                     .await
                     .map_err(|e| format!("Failed in fill success: {}", e))?
             }
@@ -85,7 +85,7 @@ impl OrderCmd {
     pub fn fill_order(
         incoming_order: Order,
         existing_orders: Vec<Order>,
-    ) -> Result<(Vec<Order>, Option<Order>, Vec<NoteArgs>), OrderError> {
+    ) -> Result<(Vec<Order>, u64, Vec<NoteArgs>), OrderError> {
         // Sort existing orders
         let sorted_orders = sort_orders(existing_orders);
 
@@ -102,7 +102,6 @@ impl OrderCmd {
 
         let mut final_orders = Vec::new();
         let mut args = Vec::new();
-        let mut new_partial_order = None;
         for order in matching_orders {
             let order_amount = order.target_asset().unwrap_fungible().amount();
 
@@ -117,32 +116,6 @@ impl OrderCmd {
             } else {
                 args.push([Felt::new(remaining_source), ZERO, ZERO, ZERO]);
                 final_orders.push(order);
-
-                let partial_source_amount = order.source_asset().unwrap_fungible().amount()
-                    - (remaining_source as f64 / order.price()) as u64;
-                let partial_target_amount =
-                    order.target_asset().unwrap_fungible().amount() - remaining_source;
-                new_partial_order = Some(Order::new(
-                    None,
-                    Asset::Fungible(
-                        FungibleAsset::new(order.source_asset().faucet_id(), partial_source_amount)
-                            .map_err(|e| {
-                                OrderError::InternalError(format!(
-                                    "Failed to create fungible asset: {}",
-                                    e
-                                ))
-                            })?,
-                    ),
-                    Asset::Fungible(
-                        FungibleAsset::new(order.target_asset().faucet_id(), partial_target_amount)
-                            .map_err(|e| {
-                                OrderError::InternalError(format!(
-                                    "Failed to create fungible asset: {}",
-                                    e
-                                ))
-                            })?,
-                    ),
-                ));
                 break;
             }
         }
@@ -151,12 +124,12 @@ impl OrderCmd {
             return Err(OrderError::FailedFill(incoming_order));
         }
 
-        Ok((final_orders, new_partial_order, args))
+        Ok((final_orders, remaining_source, args))
     }
 
     async fn fill_success(
         orders: Vec<Order>,
-        new_partial_order: Option<Order>,
+        partial_fill_amount: u64,
         args: Vec<NoteArgs>,
         account_id: AccountId,
         client: &mut Client<impl FeltRng>,
@@ -202,23 +175,19 @@ impl OrderCmd {
             .collect::<Result<Vec<(NoteId, Option<NoteArgs>)>, OrderError>>()?;
         // Create transaction
 
-        let remaining_swapp = if let Some(order) = new_partial_order {
+        let expected_partial_swapp = if partial_fill_amount > 0 {
             let not_fully_consumed_order = orders.last().unwrap();
 
             let not_fully_consumed_note = client
                 .get_input_note(not_fully_consumed_order.id().unwrap())
                 .await
                 .unwrap();
-            let metadata = not_fully_consumed_note.metadata().unwrap().clone();
             Some(
-                create_swapp_note(
+                create_expected_partial_swapp_note(
                     account_id,
-                    metadata.sender(),
-                    order.source_asset(),
-                    order.target_asset(),
-                    NoteType::Public,
-                    Felt::new(0),
-                    client.rng(),
+                    not_fully_consumed_note.try_into().unwrap(),
+                    partial_fill_amount,
+                    not_fully_consumed_order.price(),
                 )
                 .unwrap(),
             )
@@ -229,7 +198,7 @@ impl OrderCmd {
         let mut transaction_request =
             TransactionRequest::new().with_authenticated_input_notes(final_order_ids_and_args);
 
-        if let Some(swapp_note) = remaining_swapp {
+        if let Some(swapp_note) = expected_partial_swapp {
             transaction_request = transaction_request
                 .extend_advice_map(vec![(
                     swapp_note.recipient().digest(),
