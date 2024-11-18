@@ -135,7 +135,7 @@ impl OrderCmd {
         sync.execute(client).await.unwrap();
 
         // print final orders
-        print_order_table("Final orders:", &orders);
+        print_order_table("Final orders:", &orders, true);
 
         // print user balance update
         print_balance_update(&orders, &args);

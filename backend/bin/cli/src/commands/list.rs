@@ -14,13 +14,18 @@ pub struct ListCmd {
 
 impl ListCmd {
     pub async fn execute(&self, client: &Client<impl FeltRng>) -> Result<(), String> {
-        for tag in self.tags.clone() {
+        for (i, tag) in self.tags.clone().into_iter().enumerate() {
             let notes = get_notes_by_tag(client, tag.into()).await;
+            // println!("{:?}", notes[0].details().script().hash());
             let orders: Vec<Order> = notes.into_iter().map(Order::from).collect();
 
             let sorted_orders = sort_orders(orders);
             let title = format!("Relevant orders for tag {}:", tag);
-            print_order_table(title.as_str(), &sorted_orders);
+            if i == 0 {
+                print_order_table(title.as_str(), &sorted_orders, true);
+            } else {
+                print_order_table(title.as_str(), &sorted_orders, false);
+            }
         }
 
         Ok(())

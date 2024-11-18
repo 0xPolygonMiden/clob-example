@@ -3,7 +3,7 @@ use miden_client::{
     assets::{Asset, FungibleAsset},
     config::{Endpoint, RpcConfig},
     crypto::{FeltRng, RpoRandomCoin},
-    notes::NoteTag,
+    notes::{Note, NoteTag},
     rpc::TonicRpcClient,
     store::{
         sqlite_store::{config::SqliteStoreConfig, SqliteStore},
@@ -52,7 +52,19 @@ pub async fn setup_client() -> Client<impl FeltRng> {
 }
 
 pub async fn get_notes_by_tag(client: &Client<impl FeltRng>, tag: NoteTag) -> Vec<InputNoteRecord> {
-    let notes = client.get_input_notes(NoteFilter::Unspent).await.unwrap();
+    let input_notes = client.get_input_notes(NoteFilter::Unspent).await.unwrap();
+    let output_notes: Vec<InputNoteRecord> = client
+        .get_output_notes(NoteFilter::Unspent)
+        .await
+        .unwrap()
+        .iter()
+        .map(|output_note_record| Note::try_from(output_note_record.clone()).unwrap())
+        .map(|note| InputNoteRecord::from(note))
+        .collect();
+    let mut notes = Vec::new();
+
+    notes.extend(input_notes);
+    notes.extend(output_notes);
 
     notes
         .into_iter()
@@ -77,20 +89,30 @@ pub fn get_assets_from_swap_note(note: &InputNoteRecord) -> (Asset, Asset) {
     (source_asset, target_asset)
 }
 
-pub fn print_order_table(title: &str, orders: &[Order]) {
+pub fn print_order_table(title: &str, orders: &[Order], one: bool) {
     let mut table = Vec::new();
-    table.push("+--------------------------------------------------------------------+--------------------+------------------+--------------------+------------------+----------+".to_string());
-    table.push("| Note ID                                                            | Requested Asset    | Amount Requested | Offered Asset      | Offered Amount   | Price    |".to_string());
-    table.push("+--------------------------------------------------------------------+--------------------+------------------+--------------------+------------------+----------+".to_string());
+    table.push("+--------------------------------------------------------------------+------------------+------------------+------------------+------------------+----------+".to_string());
+    table.push("| Note ID                                                            | Requested Asset  | Amount Requested | Offered Asset    | Offered Amount   | Price    |".to_string());
+    table.push("+--------------------------------------------------------------------+------------------+------------------+------------------+------------------+----------+".to_string());
 
     for order in orders {
         let note_id = order
             .id()
             .map_or_else(|| "N/A".to_string(), |id| id.to_string());
-        let source_asset_faucet_id = order.source_asset().faucet_id().to_string();
+        // let source_asset_faucet_id = order.source_asset().faucet_id().to_string();
         let source_asset_amount = order.source_asset().unwrap_fungible().amount();
-        let target_asset_faucet_id = order.target_asset().faucet_id().to_string();
+        // let target_asset_faucet_id = order.target_asset().faucet_id().to_string();
         let target_asset_amount = order.target_asset().unwrap_fungible().amount();
+
+        let source_asset_faucet_id;
+        let target_asset_faucet_id;
+        if one {
+            source_asset_faucet_id = "BTC";
+            target_asset_faucet_id = "ETH";
+        } else {
+            source_asset_faucet_id = "ETH";
+            target_asset_faucet_id = "BTC";
+        }
 
         table.push(format!(
             "| {:<66} | {:<16} | {:<16} | {:<16} | {:<16} | {:<8.2} |",
@@ -103,7 +125,7 @@ pub fn print_order_table(title: &str, orders: &[Order]) {
         ));
     }
 
-    table.push("+--------------------------------------------------------------------+--------------------+------------------+--------------------+------------------+----------+\n".to_string());
+    table.push("+--------------------------------------------------------------------+------------------+------------------+------------------+------------------+----------+\n".to_string());
 
     // Print title
     println!("{}\n", title);
@@ -126,8 +148,16 @@ pub fn print_balance_update(orders: &[Order], args: &[NoteArgs]) {
     let target_faucet_id = orders[0].source_asset().faucet_id();
 
     for (i, order) in orders.into_iter().enumerate() {
-        total_source_asset += args[i][0].as_int();
-        total_target_asset += order.source_asset().unwrap_fungible().amount();
+        let fill_amount = args[i][0].as_int();
+        let offered_amount = order.source_asset().unwrap_fungible().amount();
+
+        if args[i][0].as_int() == order.target_asset().unwrap_fungible().amount() {
+            total_source_asset += fill_amount;
+            total_target_asset += offered_amount;
+        } else {
+            total_source_asset += fill_amount;
+            total_target_asset += 1;
+        }
     }
 
     println!("Balance Update Preview:");
@@ -140,6 +170,42 @@ pub fn print_balance_update(orders: &[Order], args: &[NoteArgs]) {
     println!("  Amount: {}", total_source_asset);
     println!("------------------------");
 }
+
+// pub fn print_balance_update(orders: &[Order], args: &[NoteArgs]) {
+//     if orders.is_empty() {
+//         println!("No orders to process. Your balance will not change.");
+//         return;
+//     }
+//
+//     let mut total_source_asset = 0u64;
+//     let mut total_target_asset = 0u64;
+//     let source_faucet_id = orders[0].target_asset().faucet_id();
+//     let target_faucet_id = orders[0].source_asset().faucet_id();
+//
+//     for (i, order) in orders.iter().enumerate() {
+//         let fill_amount = args[i][0].as_int();
+//         let offered_amount = order.source_asset().unwrap_fungible().amount();
+//
+//         // Calculate the ratio of filled amount to offered amount
+//         let ratio = fill_amount as f64 / offered_amount as f64;
+//
+//         // Calculate the actual amount received based on the ratio
+//         let received_amount = (offered_amount as f64 * ratio).round() as u64;
+//
+//         total_source_asset += fill_amount;
+//         total_target_asset += received_amount;
+//     }
+//
+//     println!("Balance Update Preview:");
+//     println!("------------------------");
+//     println!("Assets you will receive:");
+//     println!("  Faucet ID: {}", target_faucet_id);
+//     println!("  Amount: {}", total_target_asset);
+//     println!("\nAssets you will spend:");
+//     println!("  Faucet ID: {}", source_faucet_id);
+//     println!("  Amount: {}", total_source_asset);
+//     println!("------------------------");
+// }
 
 pub fn clear_notes_tables(db_path: &str) {
     // Open a connection to the SQLite database
