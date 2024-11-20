@@ -15,6 +15,7 @@ use crate::commands::sync::SyncCmd;
 
 use miden_order_book::{
     errors::OrderError,
+    note::create_expected_partial_swapp_note,
     order::{match_orders, sort_orders, Order},
     utils::{get_notes_by_tag, print_balance_update, print_order_table},
 };
@@ -65,9 +66,11 @@ impl OrderCmd {
 
         // fill order
         match Self::fill_order(incoming_order, existing_orders) {
-            Ok((orders, args)) => Self::fill_success(orders, args, account_id, client)
-                .await
-                .map_err(|e| format!("Failed in fill success: {}", e))?,
+            Ok((orders, partial_fill_amount, args)) => {
+                Self::fill_success(orders, partial_fill_amount, args, account_id, client)
+                    .await
+                    .map_err(|e| format!("Failed in fill success: {}", e))?
+            }
             Err(err) => match err {
                 OrderError::FailedFill(order) => Self::fill_failure(order, account_id, client)
                     .await
@@ -82,7 +85,7 @@ impl OrderCmd {
     pub fn fill_order(
         incoming_order: Order,
         existing_orders: Vec<Order>,
-    ) -> Result<(Vec<Order>, Vec<NoteArgs>), OrderError> {
+    ) -> Result<(Vec<Order>, u64, Vec<NoteArgs>), OrderError> {
         // Sort existing orders
         let sorted_orders = sort_orders(existing_orders);
 
@@ -121,11 +124,12 @@ impl OrderCmd {
             return Err(OrderError::FailedFill(incoming_order));
         }
 
-        Ok((final_orders, args))
+        Ok((final_orders, remaining_source, args))
     }
 
     async fn fill_success(
         orders: Vec<Order>,
+        partial_fill_amount: u64,
         args: Vec<NoteArgs>,
         account_id: AccountId,
         client: &mut Client<impl FeltRng>,
@@ -159,6 +163,7 @@ impl OrderCmd {
 
         // Proceed with execution
         let final_order_ids_and_args = orders
+            .clone()
             .into_iter()
             .enumerate()
             .map(|(i, order)| {
@@ -169,8 +174,39 @@ impl OrderCmd {
             })
             .collect::<Result<Vec<(NoteId, Option<NoteArgs>)>, OrderError>>()?;
         // Create transaction
-        let transaction_request =
+
+        let expected_partial_swapp = if partial_fill_amount > 0 {
+            let not_fully_consumed_order = orders.last().unwrap();
+
+            let not_fully_consumed_note = client
+                .get_input_note(not_fully_consumed_order.id().unwrap())
+                .await
+                .unwrap();
+            Some(
+                create_expected_partial_swapp_note(
+                    account_id,
+                    not_fully_consumed_note.try_into().unwrap(),
+                    partial_fill_amount,
+                    not_fully_consumed_order.price(),
+                )
+                .unwrap(),
+            )
+        } else {
+            None
+        };
+
+        let mut transaction_request =
             TransactionRequest::new().with_authenticated_input_notes(final_order_ids_and_args);
+
+        if let Some(swapp_note) = expected_partial_swapp {
+            transaction_request = transaction_request
+                .extend_advice_map(vec![(
+                    swapp_note.recipient().digest(),
+                    swapp_note.recipient().to_elements(),
+                )])
+                .with_expected_output_notes(vec![swapp_note]);
+        }
+
         let transaction = client
             .new_transaction(account_id, transaction_request)
             .await

@@ -12,6 +12,7 @@ use miden_client::{
 use miden_lib::transaction::TransactionKernel;
 use miden_objects::transaction::OutputNote;
 use rand::{seq::SliceRandom, Rng};
+use miden_client::ZERO;
 
 pub fn create_partial_swap_notes_transaction_request(
     num_notes: u8,
@@ -65,6 +66,10 @@ pub fn create_swapp_note<R: FeltRng>(
     let assembler = TransactionKernel::assembler();
     let note_code = include_str!("scripts/SWAPP.masm");
     let note_script = NoteScript::compile(note_code, assembler).unwrap();
+    let note_script_hash = note_script.hash();
+
+    // build the tag for the SWAPP use case
+    let swapp_tag = build_swap_tag(note_type, &offered_asset, &requested_asset)?;
 
     let payback_serial_num = rng.draw_word();
     let payback_recipient = build_p2id_recipient(sender, payback_serial_num)?;
@@ -72,6 +77,7 @@ pub fn create_swapp_note<R: FeltRng>(
     let payback_recipient_word: Word = payback_recipient.digest().into();
     let requested_asset_word: Word = requested_asset.into();
     let payback_tag = NoteTag::from_account_id(sender, NoteExecutionMode::Local)?;
+
 
     let inputs = NoteInputs::new(vec![
         payback_recipient_word[0],
@@ -84,19 +90,54 @@ pub fn create_swapp_note<R: FeltRng>(
         requested_asset_word[3],
         payback_tag.inner().into(),
         NoteExecutionHint::always().into(),
-    ])?;
+        swapp_tag.inner().into(),
+        ZERO,
+        note_script_hash[0],
+        note_script_hash[1],
+        note_script_hash[2],
+        note_script_hash[3],
+    ]).unwrap();
 
-    // build the tag for the SWAPP use case
-    let tag = build_swap_tag(note_type, &offered_asset, &requested_asset)?;
-    let serial_num = rng.draw_word();
+    let serial_num = [Felt::new(1), Felt::new(2), Felt::new(3), Felt::new(4)];
 
     // build the outgoing note
-    let metadata = NoteMetadata::new(sender, note_type, tag, NoteExecutionHint::always(), aux)?;
+    let metadata = NoteMetadata::new(sender, note_type, swapp_tag, NoteExecutionHint::always(), aux)?;
     let assets = NoteAssets::new(vec![offered_asset])?;
     let recipient = NoteRecipient::new(serial_num, note_script, inputs);
     let note = Note::new(assets, metadata, recipient);
 
     Ok(note)
+}
+
+pub fn create_expected_partial_swapp_note(
+    sender: AccountId,
+    original_swapp_note: Note,
+    fill_amount: u64,
+    price: f64,
+) -> Result<Note, NoteError> {
+    let swapp_tag = original_swapp_note.metadata().tag();
+    let note_type = original_swapp_note.metadata().note_type();
+    let aux = original_swapp_note.metadata().aux();
+    let note_script = original_swapp_note.recipient().script().clone();
+    let mut inputs: Vec<Felt> = original_swapp_note.recipient().inputs().clone().into();
+
+    let requested_amount :u64 = inputs[4].into();
+    let remaining_requested_amount = requested_amount - fill_amount;
+    inputs[4] = Felt::new(remaining_requested_amount);
+
+    let offered_asset = original_swapp_note.assets().iter().next().unwrap().unwrap_fungible();
+    let requested_asset = Asset::Fungible(
+        FungibleAsset::new(
+            offered_asset.faucet_id(),
+            offered_asset.amount() - (fill_amount as f64 /price) as u64,
+        ).unwrap(),
+    );
+
+    let metadata = NoteMetadata::new(sender, note_type, swapp_tag, NoteExecutionHint::always(), aux)?;
+    let assets = NoteAssets::new(vec![requested_asset])?;
+    let recipient = NoteRecipient::new(original_swapp_note.serial_num(), note_script, inputs.try_into().expect("Input quantity shouldn't change"));
+
+    Ok(Note::new(assets, metadata, recipient))
 }
 
 // HELPERS
