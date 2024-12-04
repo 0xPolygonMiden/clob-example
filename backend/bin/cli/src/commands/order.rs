@@ -3,22 +3,19 @@ use std::io::{self, Write};
 use miden_client::{
     accounts::AccountId,
     assets::{Asset, FungibleAsset},
-    auth::TransactionAuthenticator,
     crypto::FeltRng,
-    notes::{NoteId, NoteType},
-    rpc::NodeRpcClient,
-    store::Store,
-    transactions::{
-        build_swap_tag,
-        request::{SwapTransactionData, TransactionRequest},
-    },
-    Client,
+    notes::{build_swap_tag, NoteId, NoteType},
+    transactions::{NoteArgs, SwapTransactionData, TransactionRequest},
+    Client, Felt, ZERO,
 };
 
 use clap::Parser;
 
-use crate::{
+use crate::commands::sync::SyncCmd;
+
+use miden_order_book::{
     errors::OrderError,
+    note::create_expected_partial_swapp_note,
     order::{match_orders, sort_orders, Order},
     utils::{get_notes_by_tag, print_balance_update, print_order_table},
 };
@@ -43,17 +40,14 @@ pub struct OrderCmd {
 }
 
 impl OrderCmd {
-    pub async fn execute<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(
-        &self,
-        client: &mut Client<N, R, S, A>,
-    ) -> Result<(), String> {
+    pub async fn execute(&self, client: &mut Client<impl FeltRng>) -> Result<(), String> {
         // Parse id's
         let account_id = AccountId::from_hex(self.user.as_str()).unwrap();
         let source_faucet_id = AccountId::from_hex(self.source_faucet.as_str()).unwrap();
         let target_faucet_id = AccountId::from_hex(self.target_faucet.as_str()).unwrap();
 
         // Check if user has balance
-        let (account, _) = client.get_account(account_id).unwrap();
+        let (account, _) = client.get_account(account_id).await.unwrap();
         if account.vault().get_balance(source_faucet_id).unwrap() < self.source_amount {
             panic!("User does not have enough assets to execute this order.");
         }
@@ -66,24 +60,21 @@ impl OrderCmd {
         let incoming_order = Order::new(None, source_asset, target_asset);
 
         // Get relevant notes
-        let tag = build_swap_tag(NoteType::Public, target_faucet_id, source_faucet_id).unwrap();
-        let notes = get_notes_by_tag(&client, tag);
+        let tag = build_swap_tag(NoteType::Public, &target_asset, &source_asset).unwrap();
+        let notes = get_notes_by_tag(client, tag).await;
         let existing_orders: Vec<Order> = notes.into_iter().map(Order::from).collect();
-
-        assert!(
-            !existing_orders.is_empty(),
-            "There are no relevant orders available."
-        );
 
         // fill order
         match Self::fill_order(incoming_order, existing_orders) {
-            Ok(orders) => Self::fill_success(orders, account_id, client)
-                .await
-                .map_err(|_| "Failed in fill success.".to_string())?,
+            Ok((orders, partial_fill_amount, args)) => {
+                Self::fill_success(orders, partial_fill_amount, args, account_id, client)
+                    .await
+                    .map_err(|e| format!("Failed in fill success: {}", e))?
+            }
             Err(err) => match err {
                 OrderError::FailedFill(order) => Self::fill_failure(order, account_id, client)
                     .await
-                    .map_err(|_| "Failed in fill failure.".to_string())?,
+                    .map_err(|e| format!("Failed in fill failure: {}", e))?,
                 _ => panic!("Unknown error."),
             },
         }
@@ -94,7 +85,7 @@ impl OrderCmd {
     pub fn fill_order(
         incoming_order: Order,
         existing_orders: Vec<Order>,
-    ) -> Result<Vec<Order>, OrderError> {
+    ) -> Result<(Vec<Order>, u64, Vec<NoteArgs>), OrderError> {
         // Sort existing orders
         let sorted_orders = sort_orders(existing_orders);
 
@@ -107,13 +98,10 @@ impl OrderCmd {
             }
         }
 
-        // The goal is to find the best combination of orders that could fill the incoming order
-        // - Maximize the amount of target asset that the incoming order can get
-        // - Make sure that all swaps can be successfully filled
         let mut remaining_source = incoming_order.source_asset().unwrap_fungible().amount();
-        let target = incoming_order.target_asset().unwrap_fungible().amount();
 
         let mut final_orders = Vec::new();
+        let mut args = Vec::new();
         for order in matching_orders {
             let order_amount = order.target_asset().unwrap_fungible().amount();
 
@@ -123,33 +111,38 @@ impl OrderCmd {
 
             if order_amount <= remaining_source {
                 remaining_source = remaining_source.saturating_sub(order_amount);
+                args.push([Felt::new(order_amount), ZERO, ZERO, ZERO]);
+                final_orders.push(order)
+            } else {
+                args.push([Felt::new(remaining_source), ZERO, ZERO, ZERO]);
                 final_orders.push(order);
+                break;
             }
         }
 
-        let final_target_amount: u64 = final_orders
-            .iter()
-            .map(|order| order.source_asset().unwrap_fungible().amount())
-            .sum();
-
-        // We have not hit the required target amount
-        if final_target_amount < target {
+        if final_orders.len() == 0 {
             return Err(OrderError::FailedFill(incoming_order));
         }
 
-        Ok(final_orders)
+        Ok((final_orders, remaining_source, args))
     }
 
-    async fn fill_success<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(
+    async fn fill_success(
         orders: Vec<Order>,
+        partial_fill_amount: u64,
+        args: Vec<NoteArgs>,
         account_id: AccountId,
-        client: &mut Client<N, R, S, A>,
+        client: &mut Client<impl FeltRng>,
     ) -> Result<(), OrderError> {
+        // sync
+        let sync = SyncCmd {};
+        sync.execute(client).await.unwrap();
+
         // print final orders
         print_order_table("Final orders:", &orders);
 
         // print user balance update
-        print_balance_update(&orders);
+        print_balance_update(&orders, &args);
 
         // Prompt user for confirmation
         print!("Do you want to proceed with the execution? [Y/n]: ");
@@ -169,15 +162,54 @@ impl OrderCmd {
         }
 
         // Proceed with execution
-        let final_order_ids = orders
+        let final_order_ids_and_args = orders
+            .clone()
             .into_iter()
-            .map(|order| order.id().ok_or(OrderError::MissingId))
-            .collect::<Result<Vec<NoteId>, OrderError>>()?;
-
+            .enumerate()
+            .map(|(i, order)| {
+                order
+                    .id()
+                    .ok_or(OrderError::MissingId)
+                    .map(|id| (id, Some(args[i])))
+            })
+            .collect::<Result<Vec<(NoteId, Option<NoteArgs>)>, OrderError>>()?;
         // Create transaction
-        let transaction_request = TransactionRequest::consume_notes(final_order_ids);
+
+        let expected_partial_swapp = if partial_fill_amount > 0 {
+            let not_fully_consumed_order = orders.last().unwrap();
+
+            let not_fully_consumed_note = client
+                .get_input_note(not_fully_consumed_order.id().unwrap())
+                .await
+                .unwrap();
+            Some(
+                create_expected_partial_swapp_note(
+                    account_id,
+                    not_fully_consumed_note.try_into().unwrap(),
+                    partial_fill_amount,
+                    not_fully_consumed_order.price(),
+                )
+                .unwrap(),
+            )
+        } else {
+            None
+        };
+
+        let mut transaction_request =
+            TransactionRequest::new().with_authenticated_input_notes(final_order_ids_and_args);
+
+        if let Some(swapp_note) = expected_partial_swapp {
+            transaction_request = transaction_request
+                .extend_advice_map(vec![(
+                    swapp_note.recipient().digest(),
+                    swapp_note.recipient().to_elements(),
+                )])
+                .with_expected_output_notes(vec![swapp_note]);
+        }
+
         let transaction = client
             .new_transaction(account_id, transaction_request)
+            .await
             .map_err(|e| {
                 OrderError::InternalError(format!("Failed to create transaction: {}", e))
             })?;
@@ -190,10 +222,10 @@ impl OrderCmd {
         Ok(())
     }
 
-    async fn fill_failure<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(
+    async fn fill_failure(
         order: Order,
         account_id: AccountId,
-        client: &mut Client<N, R, S, A>,
+        client: &mut Client<impl FeltRng>,
     ) -> Result<(), OrderError> {
         println!("Unable to fill the requested order.");
 
@@ -221,6 +253,7 @@ impl OrderCmd {
 
         let transaction = client
             .new_transaction(account_id, transaction_request)
+            .await
             .map_err(|e| {
                 OrderError::InternalError(format!("Failed to create transaction: {}", e))
             })?;

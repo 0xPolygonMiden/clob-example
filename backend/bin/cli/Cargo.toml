@@ -1,0 +1,25 @@
+[package]
+name = "miden-order-book-cli"
+version = "0.1.0"
+description = "Miden order book CLI application"
+readme = "README.md"
+categories = ["command-line-utilities"]
+keywords = ["miden", "order-book", "cli"]
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "miden_order_book_cli"
+path = "src/main.rs"
+
+[dependencies]
+miden-order-book = { path = "../../order-book/" }
+miden-client = { workspace = true }
+clap = { version = "4.5", features = ["derive"] }
+env_logger = { workspace = true }
+log = { workspace = true }
+colored = { version = "2.1.0" }
+tokio = { workspace = true }

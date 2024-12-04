@@ -1,0 +1,31 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "order-book",
+    "bin/cli",
+    "bin/server",
+]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+authors = ["miden contributors"]
+repository = "https://github.com/0xPolygonMiden/clob-example"
+
+[workspace.dependencies]
+log = { version = "0.4.22" }
+env_logger = { version = "0.11.5" }
+colored = { version = "2.1.0" }
+serde = { version = "1.0", features = ["derive"] }
+toml = { version = "0.8.9" }
+tokio = { version = "1.40.0", features = ["rt-multi-thread", "net", "macros"] }
+tonic = { version = "0.12.3" }
+tracing = { version = "0.1.40" }
+tracing-subscriber = { version = "0.3" }
+rand_chacha = "0.3.1"
+miden-client = { git = "https://github.com/0xPolygonMiden/miden-client", branch = "main", features = ["concurrent", "testing", "sqlite", "tonic"] }
+miden-lib = { version = "0.6", default-features = false, features = ["testing", "concurrent"]  }
+miden-objects = { version = "0.6", default-features = false, features = ["testing", "concurrent"]  }
+miden-tx = { version = "0.6", default-features = false, features = ["testing", "concurrent"] }

@@ -1,8 +1,6 @@
 use clap::Parser;
 
-use miden_client::{
-    auth::TransactionAuthenticator, crypto::FeltRng, rpc::NodeRpcClient, store::Store, Client,
-};
+use miden_client::{crypto::FeltRng, Client};
 
 use super::sync::SyncCmd;
 
@@ -15,12 +13,12 @@ pub struct QueryCmd {
 }
 
 impl QueryCmd {
-    pub async fn execute<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(
-        &self,
-        client: &mut Client<N, R, S, A>,
-    ) -> Result<(), String> {
+    pub async fn execute(&self, client: &mut Client<impl FeltRng>) -> Result<(), String> {
         for tag in self.tags.clone() {
-            client.add_note_tag(tag.into()).map_err(|e| e.to_string())?;
+            client
+                .add_note_tag(tag.into())
+                .await
+                .map_err(|e| e.to_string())?;
         }
 
         // Sync rollup state

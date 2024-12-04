@@ -38,7 +38,8 @@ impl Order {
     }
 }
 
-// Conversion Into
+// Conversions
+/////////////////////////////////////////////////
 
 impl From<InputNoteRecord> for Order {
     fn from(value: InputNoteRecord) -> Self {
@@ -58,8 +59,7 @@ impl From<InputNoteRecord> for Order {
 pub fn match_orders(incoming_order: Order, existing_order: Order) -> Result<Order, OrderError> {
     // Orders match if:
     // - They have inversed source and target assets
-    // - Contains enough assets to fullfill the incoming order
-    // - Requests a number of assets capable of being fullfilled by the incoming order
+    // - Exisiting order price is lower than incoming order price
 
     // assets do not match
     if !(existing_order.source_asset.faucet_id() == incoming_order.target_asset.faucet_id()
@@ -68,18 +68,12 @@ pub fn match_orders(incoming_order: Order, existing_order: Order) -> Result<Orde
         return Err(OrderError::AssetsNotMatching);
     }
 
-    // existing order does not contain enough assets to fullfill the incoming order
-    if existing_order.source_asset.unwrap_fungible().amount()
-        < incoming_order.target_asset.unwrap_fungible().amount()
-    {
-        return Err(OrderError::TooFewSourceAssets);
-    }
-
-    // existing order request an amount too large to fullfill the incoming order
-    if existing_order.target_asset.unwrap_fungible().amount()
-        > incoming_order.source_asset.unwrap_fungible().amount()
-    {
-        return Err(OrderError::TooManyTargetAssets);
+    // existing order price is too high
+    if existing_order.price() > incoming_order.price() {
+        return Err(OrderError::PriceTooHigh(
+            incoming_order.price() as u64,
+            existing_order.price() as u64,
+        ));
     }
 
     Ok(existing_order)
@@ -113,7 +107,7 @@ mod tests {
 
     use super::Order;
 
-    fn mock_orders() -> (Order, Vec<Order>) {
+    fn build_orders() -> (Order, Vec<Order>) {
         // create faucets
         let source_faucet_id_hex = "0x227bd163275aa1bf";
         let source_faucet_id = AccountId::from_hex(source_faucet_id_hex).unwrap();
@@ -137,44 +131,46 @@ mod tests {
 
         // existing orders
 
-        // Perfect match
+        // Full swap
         let order1 = Order::new(Some(note_id), target_asset, source_asset);
 
         // Assets do not match
         let order2 = Order::new(Some(note_id), source_asset, source_asset);
 
-        // Not enough target assets
-        let new_target_amount = 19;
-        let new_target_asset =
-            Asset::Fungible(FungibleAsset::new(target_faucet_id, new_target_amount).unwrap());
-        let order3 = Order::new(Some(note_id), new_target_asset, source_asset);
-
-        // Too many requested assets
-        let new_source_amount = 11;
+        // Price is too high
+        let new_source_amount = 30;
+        let new_target_amount = 10;
         let new_source_asset =
             Asset::Fungible(FungibleAsset::new(source_faucet_id, new_source_amount).unwrap());
-        let order4 = Order::new(Some(note_id), target_asset, new_source_asset);
-
-        // Acceptable match
-        let new_target_amount = 200;
         let new_target_asset =
             Asset::Fungible(FungibleAsset::new(target_faucet_id, new_target_amount).unwrap());
-        let order5 = Order::new(Some(note_id), new_target_asset, source_asset);
+        let order3 = Order::new(Some(note_id), new_target_asset, new_source_asset);
 
-        let orders = vec![order1, order2, order3, order4, order5];
+        // Partial swap
+        let new_source_amount = 10;
+        let new_target_amount = 5;
+        let new_source_asset =
+            Asset::Fungible(FungibleAsset::new(source_faucet_id, new_source_amount).unwrap());
+        let new_target_asset =
+            Asset::Fungible(FungibleAsset::new(target_faucet_id, new_target_amount).unwrap());
+        let order4 = Order::new(Some(note_id), new_target_asset, new_source_asset);
+
+        let orders = vec![order1, order2, order3, order4];
 
         (order, orders)
     }
 
     #[test]
     fn order_matching_succeeds() {
-        let (incoming_order, existing_orders) = mock_orders();
+        let (incoming_order, existing_orders) = build_orders();
         let expected_results = [
             Ok(existing_orders[0]),
             Err(OrderError::AssetsNotMatching),
-            Err(OrderError::TooFewSourceAssets),
-            Err(OrderError::TooManyTargetAssets),
-            Ok(existing_orders[4]),
+            Err(OrderError::PriceTooHigh(
+                incoming_order.price() as u64,
+                existing_orders[2].price() as u64,
+            )),
+            Ok(existing_orders[3]),
         ];
 
         for (existing_order, expected_result) in existing_orders.into_iter().zip(expected_results) {

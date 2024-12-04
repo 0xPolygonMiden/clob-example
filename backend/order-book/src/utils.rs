@@ -1,148 +1,58 @@
-use core::panic;
 use miden_client::{
     accounts::AccountId,
     assets::{Asset, FungibleAsset},
-    auth::{StoreAuthenticator, TransactionAuthenticator},
     config::{Endpoint, RpcConfig},
     crypto::{FeltRng, RpoRandomCoin},
-    notes::{NoteTag, NoteType},
-    rpc::{NodeRpcClient, TonicRpcClient},
+    notes::NoteTag,
+    rpc::TonicRpcClient,
     store::{
         sqlite_store::{config::SqliteStoreConfig, SqliteStore},
-        InputNoteRecord, NoteFilter, Store,
+        InputNoteRecord, NoteFilter, StoreAuthenticator,
     },
-    transactions::{
-        request::{TransactionRequest, TransactionRequestError},
-        OutputNote,
-    },
+    transactions::NoteArgs,
     Client, Felt,
 };
-use miden_lib::notes::create_swap_note;
-use rand::{seq::SliceRandom, Rng};
-use rusqlite::{Connection, Result};
-use std::rc::Rc;
+use miden_tx::{LocalTransactionProver, ProvingOptions};
+use rand::Rng;
+use rusqlite::Connection;
+use std::sync::Arc;
 
 use crate::order::Order;
 
 // Client Setup
 // ================================================================================================
 
-pub fn setup_client() -> Client<
-    TonicRpcClient,
-    RpoRandomCoin,
-    SqliteStore,
-    StoreAuthenticator<RpoRandomCoin, SqliteStore>,
-> {
+pub async fn setup_client() -> Client<impl FeltRng> {
     let store_config = SqliteStoreConfig::default();
-    let store = Rc::new(SqliteStore::new(&store_config).unwrap());
+    let store = SqliteStore::new(&store_config).await.unwrap();
+    let store = Arc::new(store);
+
     let mut rng = rand::thread_rng();
     let coin_seed: [u64; 4] = rng.gen();
+
     let rng = RpoRandomCoin::new(coin_seed.map(Felt::new));
     let authenticator = StoreAuthenticator::new_with_rng(store.clone(), rng);
+    let tx_prover = LocalTransactionProver::new(ProvingOptions::default());
+
     let rpc_config = RpcConfig {
         endpoint: Endpoint::new("http".to_string(), "localhost".to_string(), 57291),
         timeout_ms: 10000,
     };
+
     let in_debug_mode = true;
+
     Client::new(
-        TonicRpcClient::new(&rpc_config),
+        Box::new(TonicRpcClient::new(&rpc_config)),
         rng,
         store,
-        authenticator,
+        Arc::new(authenticator),
+        Arc::new(tx_prover),
         in_debug_mode,
     )
 }
 
-// Transaction Request Creation
-// ================================================================================================
-
-pub fn create_swap_notes_transaction_request(
-    num_notes: u8,
-    sender: AccountId,
-    offering_faucet: AccountId,
-    total_asset_offering: u64,
-    requesting_faucet: AccountId,
-    total_asset_requesting: u64,
-    felt_rng: &mut impl FeltRng,
-) -> Result<TransactionRequest, TransactionRequestError> {
-    // Setup note variables
-    let mut expected_future_notes = vec![];
-    let mut own_output_notes = vec![];
-    let note_type = NoteType::Public;
-    let aux = Felt::new(0);
-
-    // Generate random distributions for offering and requesting assets
-    let offering_distribution =
-        generate_random_distribution(num_notes as usize, total_asset_offering);
-    let requesting_distribution =
-        generate_random_distribution(num_notes as usize, total_asset_requesting);
-
-    for i in 0..num_notes {
-        let offered_asset = Asset::Fungible(
-            FungibleAsset::new(offering_faucet, offering_distribution[i as usize]).unwrap(),
-        );
-        let requested_asset = Asset::Fungible(
-            FungibleAsset::new(requesting_faucet, requesting_distribution[i as usize]).unwrap(),
-        );
-
-        let (created_note, payback_note_details) = create_swap_note(
-            sender,
-            offered_asset,
-            requested_asset,
-            note_type,
-            aux,
-            felt_rng,
-        )?;
-        expected_future_notes.push(payback_note_details);
-        own_output_notes.push(OutputNote::Full(created_note));
-    }
-
-    TransactionRequest::new()
-        .with_expected_future_notes(expected_future_notes)
-        .with_own_output_notes(own_output_notes)
-}
-
-pub fn generate_random_distribution(n: usize, total: u64) -> Vec<u64> {
-    if total < n as u64 {
-        panic!("Total must at least be equal to n to make sure that all values are non-zero.")
-    }
-
-    let mut rng = rand::thread_rng();
-    let mut result = Vec::with_capacity(n);
-    let mut remaining = total;
-
-    // Generate n-1 random numbers
-    for _ in 0..n - 1 {
-        if remaining == 0 {
-            result.push(1); // Ensure non-zero
-            continue;
-        }
-
-        let max = remaining.saturating_sub(n as u64 - result.len() as u64 - 1);
-        let value = if max > 1 {
-            rng.gen_range(1..=(total / n as u64))
-        } else {
-            1
-        };
-
-        result.push(value);
-        remaining -= value;
-    }
-
-    // Add the last number to make the sum equal to total
-    result.push(remaining.max(1));
-
-    // Shuffle the vector to randomize the order
-    result.shuffle(&mut rng);
-
-    result
-}
-
-pub fn get_notes_by_tag<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(
-    client: &Client<N, R, S, A>,
-    tag: NoteTag,
-) -> Vec<InputNoteRecord> {
-    let notes = client.get_input_notes(NoteFilter::All).unwrap();
+pub async fn get_notes_by_tag(client: &Client<impl FeltRng>, tag: NoteTag) -> Vec<InputNoteRecord> {
+    let notes = client.get_input_notes(NoteFilter::Unspent).await.unwrap();
 
     notes
         .into_iter()
@@ -161,8 +71,8 @@ pub fn get_notes_by_tag<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAu
 pub fn get_assets_from_swap_note(note: &InputNoteRecord) -> (Asset, Asset) {
     let source_asset =
         Asset::Fungible(note.assets().iter().collect::<Vec<&Asset>>()[0].unwrap_fungible());
-    let target_faucet = AccountId::try_from(note.details().inputs()[7]).unwrap();
-    let target_amount = note.details().inputs()[4].as_int();
+    let target_faucet = AccountId::try_from(note.details().inputs().values()[7]).unwrap();
+    let target_amount = note.details().inputs().values()[4].as_int();
     let target_asset = Asset::Fungible(FungibleAsset::new(target_faucet, target_amount).unwrap());
     (source_asset, target_asset)
 }
@@ -193,7 +103,7 @@ pub fn print_order_table(title: &str, orders: &[Order]) {
         ));
     }
 
-    table.push("+--------------------------------------------------------------------+--------------------+------------------+--------------------+------------------+----------+".to_string());
+    table.push("+--------------------------------------------------------------------+--------------------+------------------+--------------------+------------------+----------+\n".to_string());
 
     // Print title
     println!("{}\n", title);
@@ -204,7 +114,7 @@ pub fn print_order_table(title: &str, orders: &[Order]) {
     }
 }
 
-pub fn print_balance_update(orders: &[Order]) {
+pub fn print_balance_update(orders: &[Order], args: &[NoteArgs]) {
     if orders.is_empty() {
         println!("No orders to process. Your balance will not change.");
         return;
@@ -215,8 +125,8 @@ pub fn print_balance_update(orders: &[Order]) {
     let source_faucet_id = orders[0].target_asset().faucet_id();
     let target_faucet_id = orders[0].source_asset().faucet_id();
 
-    for order in orders {
-        total_source_asset += order.target_asset().unwrap_fungible().amount();
+    for (i, order) in orders.into_iter().enumerate() {
+        total_source_asset += args[i][0].as_int();
         total_target_asset += order.source_asset().unwrap_fungible().amount();
     }
 
@@ -231,9 +141,9 @@ pub fn print_balance_update(orders: &[Order]) {
     println!("------------------------");
 }
 
-pub fn clear_notes_tables(db_path: &str) -> Result<()> {
+pub fn clear_notes_tables(db_path: &str) {
     // Open a connection to the SQLite database
-    let conn = Connection::open(db_path)?;
+    let conn = Connection::open(db_path).unwrap();
 
     // Execute the DELETE commands
     conn.execute_batch(
@@ -241,9 +151,8 @@ pub fn clear_notes_tables(db_path: &str) -> Result<()> {
         DELETE FROM output_notes;
         DELETE FROM input_notes;
     ",
-    )?;
+    )
+    .unwrap();
 
     println!("Both output_notes and input_notes tables have been cleared.");
-
-    Ok(())
 }

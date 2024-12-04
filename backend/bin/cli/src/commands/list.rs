@@ -1,26 +1,21 @@
-use crate::{
+use clap::Parser;
+use miden_client::{crypto::FeltRng, Client};
+use miden_order_book::{
     order::{sort_orders, Order},
     utils::{get_notes_by_tag, print_order_table},
 };
-use clap::Parser;
-use miden_client::{
-    auth::TransactionAuthenticator, crypto::FeltRng, rpc::NodeRpcClient, store::Store, Client,
-};
 
 #[derive(Debug, Clone, Parser)]
-#[clap(about = "Create a new account and login")]
+#[clap(about = "List avaible order book orders")]
 pub struct ListCmd {
     // tags
     pub tags: Vec<u32>,
 }
 
 impl ListCmd {
-    pub fn execute<N: NodeRpcClient, R: FeltRng, S: Store, A: TransactionAuthenticator>(
-        &self,
-        client: &Client<N, R, S, A>,
-    ) -> Result<(), String> {
+    pub async fn execute(&self, client: &Client<impl FeltRng>) -> Result<(), String> {
         for tag in self.tags.clone() {
-            let notes = get_notes_by_tag(&client, tag.into());
+            let notes = get_notes_by_tag(client, tag.into()).await;
             let orders: Vec<Order> = notes.into_iter().map(Order::from).collect();
 
             let sorted_orders = sort_orders(orders);
